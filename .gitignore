@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+.vscode/
+.idea/
+
+# Local-only Excel round-trip artifacts (never committed per spec §12)
+*-config.xlsx

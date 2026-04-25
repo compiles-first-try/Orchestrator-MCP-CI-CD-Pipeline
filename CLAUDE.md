@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository is being built from scratch against the spec `Claude Code Prompt — RPA Platform Engineering System (v5 — partial tenant onboarding)`. Until `apps/` and `packages/` exist, the spec is the source of truth — read it before making non-trivial decisions. When code and spec disagree, ask the user which is canonical; do not silently reconcile.
+This repository is being built incrementally against the spec `Claude Code Prompt — RPA Platform Engineering System (v5 — partial tenant onboarding)`. The spec is the source of truth for parts not yet implemented — read it before making non-trivial decisions. When code and spec disagree, ask the user which is canonical; do not silently reconcile.
+
+What exists today (per §21 of the spec):
+
+- Monorepo skeleton: pnpm workspaces, Turborepo, shared `tsconfig.base.json`, Prettier.
+- `packages/shared` — `RpaPlatformError` hierarchy, `TenantName`, the permissions key catalog, the `can(user, permission, context)` check, and the seeded system-role grants for `developer` / `admin` / `ba`. The §7 matrix is encoded as a test fixture and asserted exhaustively (every cell × every tenant for tenant-scoped permissions); coverage on `src/permissions/**` is gated at 100%.
+- `packages/db` — Drizzle schema for all §5 tables (`users`, `roles`, `user_roles`, `projects`, `project_tenants`, `framework_releases`, `annotations`, `audit_log`, `pr_approvals`, `reconciliation_runs`, `credential_values`) plus pg enums for tenant name, tenant status, audit transport, PR approval status, and reconcile status. Initial migration committed at `packages/db/migrations/0000_initial_schema.sql`. A `createDatabase(connectionString)` factory wires Drizzle to `postgres-js`.
+
+What does **not** exist yet (in spec build order): `config-schema`, `framework-version`, `orchestrator-client`, `github-client`, `credential-source`, `xaml-parser`, `config-output`, `config-roundtrip` + `tools/config-cli`, `reconciler`, `apps/api`, `apps/slack-bot`, `apps/github-action`, `templates/rpa-project`, `infra/`. ESLint is also not yet wired — Prettier covers formatting, TypeScript strict mode covers correctness for now.
 
 ## What this system is
 
@@ -30,10 +38,10 @@ These come from §0 of the spec. Treat them as constraints, not suggestions:
 
 ### Two MCP layers — don't conflate them
 
-| Layer | What | Who hosts | Who calls |
-|---|---|---|---|
-| UiPath Orchestrator MCP server | Translator that exposes Orchestrator REST/OData as MCP tools | UiPath Cloud (default) or self-hosted | Our API server |
-| UiPath Orchestrator | The actual product where tenants live | UiPath Cloud / on-prem | The MCP server, on behalf of our API |
+| Layer                          | What                                                         | Who hosts                             | Who calls                            |
+| ------------------------------ | ------------------------------------------------------------ | ------------------------------------- | ------------------------------------ |
+| UiPath Orchestrator MCP server | Translator that exposes Orchestrator REST/OData as MCP tools | UiPath Cloud (default) or self-hosted | Our API server                       |
+| UiPath Orchestrator            | The actual product where tenants live                        | UiPath Cloud / on-prem                | The MCP server, on behalf of our API |
 
 Switching from UiPath Cloud's hosted MCP to self-hosted is an env var change (`ORCHESTRATOR_MCP_URL`), not a code change. Same code path; tool discovery re-runs on boot.
 
@@ -53,6 +61,7 @@ The reconciler **never** calls MCP or REST directly — all Orchestrator interac
 ### Where permissions are enforced (defense in depth)
 
 Three places, all required:
+
 1. **GitHub branch protection** — physical push prevention.
 2. **Slack command handlers** — action prevention before any side effect.
 3. **API route middleware** — `can(user, permission, context)` from `packages/shared/src/permissions/check.ts` runs on every route.
@@ -61,13 +70,13 @@ The permissions matrix in §7 of the spec is the contract. The default system ro
 
 ### Branch ↔ tenant mapping (project repos)
 
-| Branch | Tenant | Reconcile? |
-|---|---|---|
-| `dev` | dev | auto-apply on push |
-| `test` | test | dry-run on PR, apply on merge with approval |
-| `stage` | stage | same, requires `PR_APPROVE_TEST_TO_STAGE` |
-| `main` | prod | same, BA-only approval (`PR_APPROVE_STAGE_TO_PROD`) |
-| `feature/*` | none | branch protection only, no reconcile |
+| Branch      | Tenant | Reconcile?                                          |
+| ----------- | ------ | --------------------------------------------------- |
+| `dev`       | dev    | auto-apply on push                                  |
+| `test`      | test   | dry-run on PR, apply on merge with approval         |
+| `stage`     | stage  | same, requires `PR_APPROVE_TEST_TO_STAGE`           |
+| `main`      | prod   | same, BA-only approval (`PR_APPROVE_STAGE_TO_PROD`) |
+| `feature/*` | none   | branch protection only, no reconcile                |
 
 ### Config output dual-format (transitional)
 
@@ -78,6 +87,7 @@ The legacy Excel schema (4 tabs: Settings, Constants, Assets, Constants) must ma
 ### Three config-editing surfaces
 
 Developer UX is a first-class success criterion. Don't collapse these:
+
 - **VS Code (JSON files in Git)** — single-value tweaks, code review, normal flow.
 - **`/rpa config set` (Slack)** — quick fix without leaving Slack; bot opens a tiny PR on the user's behalf. For non-dev tenants, this PR follows the normal approval flow.
 - **`pnpm config:export | config:import` (Excel round-trip)** — bulk edits, 4-tenant comparison, non-developer collaboration. Excel files are local-only, never committed.
@@ -114,16 +124,38 @@ Node 20 LTS, TypeScript 5.x with `strict: true` and `noUncheckedIndexedAccess: t
 
 ## Common commands
 
-These are the commands the spec requires. Wire them up as the workspace materializes:
+Workspace-level (Turborepo orchestrates per-package tasks):
 
 ```sh
-docker compose up -d              # postgres + api + slack-bot + mock-orchestrator-mcp + mock-github-action
-pnpm seed                         # seeds users, framework releases, demo-bot project, 4 tenants
-pnpm slack:dev                    # opens Bolt Socket Mode connection
-pnpm sim:commit dev               # simulates a commit + Action run against the local API
-pnpm test                         # vitest across the workspace
-pnpm config:export <project>      # generate <project>-config.xlsx locally (4 tabs)
-pnpm config:import <project>      # validate and write the modified xlsx back to JSON files
+pnpm install                                       # install all workspace deps
+pnpm test                                          # vitest across every package
+pnpm typecheck                                     # tsc --noEmit across every package
+pnpm build                                         # tsc per package (emits to dist/)
+pnpm format                                        # Prettier write
+pnpm format:check                                  # Prettier check (CI)
+```
+
+Per-package (use `--filter` to scope):
+
+```sh
+pnpm --filter @rpa-platform/shared test:coverage   # 100%-gated permissions coverage
+pnpm --filter @rpa-platform/db db:generate         # generate a new Drizzle migration from schema.ts
+pnpm --filter @rpa-platform/db db:migrate          # apply pending migrations (needs DATABASE_URL)
+pnpm --filter @rpa-platform/db db:push             # push schema directly (dev shortcut)
+pnpm --filter @rpa-platform/db db:studio           # Drizzle Studio
+```
+
+To run a single test file: `pnpm --filter @rpa-platform/shared exec vitest run test/permissions.matrix.test.ts`.
+
+Spec-required commands not yet implemented (will exist once `infra/`, `apps/`, and the round-trip tool land):
+
+```sh
+docker compose up -d                               # postgres + api + slack-bot + mock-orchestrator-mcp + mock-github-action
+pnpm seed                                          # seeds users, framework releases, demo-bot project, 4 tenants
+pnpm slack:dev                                     # opens Bolt Socket Mode connection
+pnpm sim:commit dev                                # simulates a commit + Action run against the local API
+pnpm config:export <project>                       # generate <project>-config.xlsx locally (4 tabs)
+pnpm config:import <project>                       # validate and write the modified xlsx back to JSON files
 ```
 
 For local dev, `ORCHESTRATOR_MCP_URL` defaults to `http://mock-orchestrator-mcp:4000` (the in-repo mock at `infra/mocks/mock-orchestrator-mcp/`). For the recorded demo, swap it to a real UiPath Cloud MCP endpoint and restart — no code changes.
@@ -142,6 +174,7 @@ Aim for 80%+ on `packages/`, lighter on `apps/`.
 ## Scope discipline
 
 v1 explicitly excludes (placeholders only):
+
 - Any modification to framework repo source code.
 - Desktop UI / web dashboard. `/rpa edit` returns `"Inline editing arrives in v2 — for now, edit on your machine and commit."`
 - AWS Secrets Manager — implement `credential-source` interface with `manual` only; `aws.ts` is a clearly marked stub that throws `NotImplementedError`.

@@ -171,6 +171,10 @@ For local dev, `ORCHESTRATOR_MCP_URL` defaults to `http://mock-orchestrator-mcp:
 
 Aim for 80%+ on `packages/`, lighter on `apps/`.
 
+## Project-scoped skills
+
+- **`/uipath-research`** (`.claude/skills/uipath-research/SKILL.md`) — researches UiPath's current public surface (MCP tools, External Application scopes, REST/OData endpoints, XAML conventions). Use before implementing any package that talks to UiPath. Produces dated, cited reports in `docs/research/`. Spec assumptions about UiPath behavior should be verified through this skill, not trusted blindly — the spec was written at a point in time.
+
 ## Scope discipline
 
 v1 explicitly excludes (placeholders only):

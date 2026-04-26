@@ -12,3 +12,17 @@ export {
   type RequestOptions,
   type ODataCollection,
 } from "./http.js";
+export {
+  discoverMcpTools,
+  McpToolMap,
+  RESOURCES,
+  OPS,
+  type McpClientLike,
+  type McpClientFactory,
+  type McpToolDescriptor,
+  type DiscoveryResult,
+  type DiscoveryOptions,
+  type ResourceKey,
+  type OpKey,
+} from "./mcp-discovery.js";
+export { chooseTransport, type Transport, type TransportChoice } from "./transport.js";

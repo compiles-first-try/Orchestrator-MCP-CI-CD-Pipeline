@@ -13,6 +13,7 @@ function fakeClient(tools: readonly McpToolDescriptor[]): McpClientLike & { clos
   const state = { closed: false };
   return {
     listTools: () => Promise.resolve({ tools }),
+    callTool: () => Promise.resolve(undefined),
     close: async () => {
       state.closed = true;
     },
@@ -96,6 +97,7 @@ describe("discoverMcpTools", () => {
   it("throws OrchestratorTransportError when listTools rejects", async () => {
     const factory: McpClientFactory = async () => ({
       listTools: () => Promise.reject(new Error("server crashed")),
+      callTool: () => Promise.resolve(undefined),
       close: async () => undefined,
     });
     await expect(discoverMcpTools("https://mcp.example", { factory })).rejects.toBeInstanceOf(
@@ -107,6 +109,7 @@ describe("discoverMcpTools", () => {
     let closed = false;
     const factory: McpClientFactory = async () => ({
       listTools: () => Promise.reject(new Error("boom")),
+      callTool: () => Promise.resolve(undefined),
       close: async () => {
         closed = true;
       },
@@ -126,6 +129,7 @@ describe("discoverMcpTools", () => {
   it("close() is best-effort and swallows close errors", async () => {
     const factory: McpClientFactory = async () => ({
       listTools: () => Promise.resolve({ tools: [] }),
+      callTool: () => Promise.resolve(undefined),
       close: () => Promise.reject(new Error("already closed")),
     });
     const result = await discoverMcpTools("https://mcp.example", { factory });

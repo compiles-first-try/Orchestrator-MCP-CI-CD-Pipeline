@@ -7,6 +7,7 @@ export interface McpToolDescriptor {
 
 export interface McpClientLike {
   listTools(): Promise<{ tools: readonly McpToolDescriptor[] }>;
+  callTool(name: string, args: Readonly<Record<string, unknown>>): Promise<unknown>;
   close(): Promise<void>;
 }
 

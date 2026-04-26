@@ -10,7 +10,7 @@ The spec assumes UiPath Cloud's MCP server exposes Orchestrator's
 resource-management surface (Assets, Queues, Buckets, Bucket files,
 Credentials) as MCP tools we can discover at startup and call directly,
 with REST as a fallback. **As of April 2026, this assumption does not
-hold.** UiPath's MCP servers are designed to expose UiPath *artifacts*
+hold.** UiPath's MCP servers are designed to expose UiPath _artifacts_
 (Automations, Agents, Agentic Processes, API Workflows, Integration
 Service Activities) as invoke-style tools — they do not expose CRUD
 operations on Orchestrator resources. For everything `rpa-platform`
@@ -23,8 +23,8 @@ that needs a user decision before `orchestrator-client` is built.
 
 ### UiPath MCP server taxonomy
 
-UiPath Cloud Orchestrator supports four MCP server *types*, all of
-which are *outbound* — they let UiPath expose its own surface to
+UiPath Cloud Orchestrator supports four MCP server _types_, all of
+which are _outbound_ — they let UiPath expose its own surface to
 external MCP clients (e.g., AI agents). They are not a generic
 "Orchestrator REST translated to MCP" wrapper.
 
@@ -75,12 +75,13 @@ All resource-management operations the platform needs are OData-only:
   separates `QueueDefinitions` (for external systems via API) from
   `Queues` (for the Robot to access queues at runtime). ([Orchestrator — About OData and references](https://docs.uipath.com/orchestrator/automation-cloud/latest/api-Guide/about-odata-and-references) and forum confirmations [1](https://forum.uipath.com/t/cant-create-a-queue-definition-through-the-orchestrator-rest-api/13608) [2](https://forum.uipath.com/t/orchestrator-http-request-call-odata-queuedefinitions/37132), all accessed 2026-04-26)
 - **Storage buckets**: managed via the buckets requests page; bucket
-  *file* upload is a **two-step** flow:
+  _file_ upload is a **two-step** flow:
   1. `GET /odata/Buckets({key})/UiPath.Server.Configuration.OData.GetWriteUri?path=...&contentType=...`
      returns a pre-signed URI plus the HTTP method to use.
   2. The client then PUTs the file binary to that pre-signed URI.
 
   The scope required is `OR.Administration`. ([Orchestrator — Storage bucket requests](https://docs.uipath.com/orchestrator/automation-cloud/latest/api-guide/storage-bucket-requests), accessed 2026-04-26)
+
 - **Credentials**: managed via the credential-store plugin / Asset API
   combination. Credentials are stored in a credential store and the
   Asset API exposes them at the asset boundary. ([Orchestrator — Managing credential stores](https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/managing-credential-stores), accessed 2026-04-26)
@@ -115,25 +116,25 @@ implementation doesn't try to use a non-existent refresh-token flow.
 **Spec §0 invariant 5 + §10.5** describe an MCP-primary client with
 REST as the per-operation fallback, recording `transport=mcp` or
 `transport=rest_fallback` per audit row. **Reality:** for the resource
-operations `rpa-platform` performs, there are *no* MCP tools to
+operations `rpa-platform` performs, there are _no_ MCP tools to
 discover. Discovery would return zero matching tools and every call
 would be REST.
 
 **Three options for the user to pick from:**
 
 a. **Drop the MCP layer.** Make `orchestrator-client` REST-only.
-   `audit_transport` enum simplifies to `rest` / `n_a`. Cleaner code,
-   honest about the surface UiPath actually offers.
+`audit_transport` enum simplifies to `rest` / `n_a`. Cleaner code,
+honest about the surface UiPath actually offers.
 b. **Keep MCP discovery as scaffolding** but treat REST as the primary
-   transport for resource ops. The MCP path remains a placeholder for
-   the future where UiPath might expose resource-CRUD MCP tools (or
-   where we run our own custom Coded MCP server in front of
-   Orchestrator). The audit row records `mcp` if the discovered tool
-   set actually contains a match (currently never), `rest_fallback`
-   otherwise.
+transport for resource ops. The MCP path remains a placeholder for
+the future where UiPath might expose resource-CRUD MCP tools (or
+where we run our own custom Coded MCP server in front of
+Orchestrator). The audit row records `mcp` if the discovered tool
+set actually contains a match (currently never), `rest_fallback`
+otherwise.
 c. **Roll our own MCP wrapper.** Build a Coded UiPath MCP server that
-   exposes our resource ops as MCP tools, then connect to it. Probably
-   overkill for v1 but worth flagging.
+exposes our resource ops as MCP tools, then connect to it. Probably
+overkill for v1 but worth flagging.
 
 My recommendation: **(b)**. It preserves the spec's audit/transport
 invariant, keeps the door open without speculative work, and
@@ -143,8 +144,8 @@ is low.
 
 ### 2. Bucket-file upload genuinely requires the two-step REST flow
 
-The handoff prompt asked specifically: *"whether bucket file upload
-still requires REST fallback."* Answer: **yes, REST is the only
+The handoff prompt asked specifically: _"whether bucket file upload
+still requires REST fallback."_ Answer: **yes, REST is the only
 option**, and the operation is two-step (`GetWriteUri` → PUT to the
 returned URI). The token used in step 2 is the **pre-signed URI's own
 auth**, not the Orchestrator OAuth token, so the HTTP client must not
@@ -174,9 +175,9 @@ permissions-per-endpoint doc when wiring each operation.
 
 ### 4. Credential management has a UiPath-side wrinkle
 
-Credentials live in a *credential store* in Orchestrator (cloud-hosted
+Credentials live in a _credential store_ in Orchestrator (cloud-hosted
 or external plugin). The platform's `credentials.json` defines the
-*name + kind*; the actual secret is set via the Asset API as a
+_name + kind_; the actual secret is set via the Asset API as a
 credential-typed asset. This means our `credential-source` package's
 "manual" path writes the user-supplied secret through the Asset POST,
 not through a separate Credentials endpoint. The schema we built in
@@ -211,18 +212,18 @@ the `username` slot or as text assets per convention).
 
 ## Sources
 
-| URL | Title | Accessed | Notes |
-| --- | ----- | -------- | ----- |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/about-mcp-servers | Orchestrator — About MCP Servers | 2026-04-26 | Authoritative on the four MCP server types |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/creating-uipath-mcp-servers | Orchestrator — Creating UiPath MCP Servers | 2026-04-26 | Authoritative on tool categories (Automations/Agents/Agentic/API workflows/Activities) |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/managing-mcp-servers | Orchestrator — Managing MCP Servers | 2026-04-26 | Lifecycle / hosting context |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/creating-coded-mcp-servers | Orchestrator — Creating Coded MCP Servers | 2026-04-26 | Path for option (c) above |
-| https://docs.uipath.com/automation-cloud/automation-cloud/latest/api-guide/accessing-uipath-resources-using-external-applications | Automation Cloud — External Applications (OAuth) | 2026-04-26 | OR.X scope convention, OR.Default, no refresh-token flow |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-guide/storage-bucket-requests | Orchestrator — Storage bucket requests | 2026-04-26 | Two-step bucket file upload, OR.Administration scope |
-| https://docs.uipath.com/orchestrator/standalone/2022.10/api-Guide/assets-requests | Orchestrator — Assets requests | 2026-04-26 | /odata/Assets verbs, ValueType discriminator |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-Guide/about-odata-and-references | Orchestrator — About OData and references | 2026-04-26 | OData base for Orchestrator REST |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-guide/permissions-per-endpoint | Orchestrator — Permissions per endpoint | 2026-04-26 | Title surfaced in search; page not fetchable from this environment |
-| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/managing-credential-stores | Orchestrator — Managing credential stores | 2026-04-26 | Credential store + Asset API combination |
-| https://forum.uipath.com/t/cant-create-a-queue-definition-through-the-orchestrator-rest-api/13608 | Forum: creating queue definitions via REST | 2026-04-26 | Community confirmation of QueueDefinitions vs Queues split |
-| https://forum.uipath.com/t/orchestrator-http-request-call-odata-queuedefinitions/37132 | Forum: odata/QueueDefinitions usage | 2026-04-26 | Community example of POST body |
-| https://lobehub.com/mcp/uipath-uipath_mcp | LobeHub — UiPath MCP Server listing | 2026-04-26 | Third-party listing; treat as hint only |
+| URL                                                                                                                               | Title                                            | Accessed   | Notes                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------- | -------------------------------------------------------------------------------------- |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/about-mcp-servers                                         | Orchestrator — About MCP Servers                 | 2026-04-26 | Authoritative on the four MCP server types                                             |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/creating-uipath-mcp-servers                               | Orchestrator — Creating UiPath MCP Servers       | 2026-04-26 | Authoritative on tool categories (Automations/Agents/Agentic/API workflows/Activities) |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/managing-mcp-servers                                      | Orchestrator — Managing MCP Servers              | 2026-04-26 | Lifecycle / hosting context                                                            |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/creating-coded-mcp-servers                                | Orchestrator — Creating Coded MCP Servers        | 2026-04-26 | Path for option (c) above                                                              |
+| https://docs.uipath.com/automation-cloud/automation-cloud/latest/api-guide/accessing-uipath-resources-using-external-applications | Automation Cloud — External Applications (OAuth) | 2026-04-26 | OR.X scope convention, OR.Default, no refresh-token flow                               |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-guide/storage-bucket-requests                                    | Orchestrator — Storage bucket requests           | 2026-04-26 | Two-step bucket file upload, OR.Administration scope                                   |
+| https://docs.uipath.com/orchestrator/standalone/2022.10/api-Guide/assets-requests                                                 | Orchestrator — Assets requests                   | 2026-04-26 | /odata/Assets verbs, ValueType discriminator                                           |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-Guide/about-odata-and-references                                 | Orchestrator — About OData and references        | 2026-04-26 | OData base for Orchestrator REST                                                       |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/api-guide/permissions-per-endpoint                                   | Orchestrator — Permissions per endpoint          | 2026-04-26 | Title surfaced in search; page not fetchable from this environment                     |
+| https://docs.uipath.com/orchestrator/automation-cloud/latest/user-guide/managing-credential-stores                                | Orchestrator — Managing credential stores        | 2026-04-26 | Credential store + Asset API combination                                               |
+| https://forum.uipath.com/t/cant-create-a-queue-definition-through-the-orchestrator-rest-api/13608                                 | Forum: creating queue definitions via REST       | 2026-04-26 | Community confirmation of QueueDefinitions vs Queues split                             |
+| https://forum.uipath.com/t/orchestrator-http-request-call-odata-queuedefinitions/37132                                            | Forum: odata/QueueDefinitions usage              | 2026-04-26 | Community example of POST body                                                         |
+| https://lobehub.com/mcp/uipath-uipath_mcp                                                                                         | LobeHub — UiPath MCP Server listing              | 2026-04-26 | Third-party listing; treat as hint only                                                |

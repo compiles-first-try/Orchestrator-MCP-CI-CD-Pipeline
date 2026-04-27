@@ -218,6 +218,34 @@ importers:
         specifier: ^2.0.2
         version: 2.1.9(@types/node@20.19.39)
 
+  packages/reconciler:
+    dependencies:
+      '@rpa-platform/config-schema':
+        specifier: workspace:*
+        version: link:../config-schema
+      '@rpa-platform/credential-source':
+        specifier: workspace:*
+        version: link:../credential-source
+      '@rpa-platform/orchestrator-client':
+        specifier: workspace:*
+        version: link:../orchestrator-client
+      '@rpa-platform/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.10
+        version: 20.19.39
+      '@vitest/coverage-v8':
+        specifier: ^2.0.2
+        version: 2.1.9(vitest@2.1.9(@types/node@20.19.39))
+      typescript:
+        specifier: ^5.5.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.2
+        version: 2.1.9(@types/node@20.19.39)
+
   packages/shared:
     devDependencies:
       '@types/node':

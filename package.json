@@ -15,7 +15,9 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "config:export": "pnpm --filter @rpa-platform/config-cli config:export",
+    "config:import": "pnpm --filter @rpa-platform/config-cli config:import"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

@@ -1,0 +1,26 @@
+{
+  "name": "@rpa-platform/config-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "rpa-config-export": "./dist/export.js",
+    "rpa-config-import": "./dist/import.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "config:export": "tsx src/export.ts",
+    "config:import": "tsx src/import.ts"
+  },
+  "dependencies": {
+    "@rpa-platform/config-roundtrip": "workspace:*",
+    "@rpa-platform/config-schema": "workspace:*",
+    "@rpa-platform/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.3"
+  }
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010" x:Class="Main"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:sap="http://schemas.microsoft.com/netfx/2009/xaml/activities/presentation"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+          xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <x:Members>
+    <x:Property Name="in_OrchestratorUrl" Type="InArgument(x:String)" />
+    <x:Property Name="out_Result" Type="OutArgument(x:String)" />
+    <x:Property Name="io_Counter" Type="InOutArgument(x:Int32)" />
+  </x:Members>
+  <Sequence DisplayName="Top sequence" sap2010:Annotation.AnnotationText="This is the top-level sequence">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="MaxRows" Default="100" />
+      <Variable x:TypeArguments="x:Boolean" Name="EnableLogging" Default="True" />
+    </Sequence.Variables>
+    <WriteLine DisplayName="Log start" Text="Starting" />
+    <Sequence DisplayName="Inner" sap2010:Annotation.AnnotationText="Inner annotation">
+      <Sequence.Variables>
+        <Variable x:TypeArguments="x:Int32" Name="InnerCounter" Default="0" />
+      </Sequence.Variables>
+      <Assign DisplayName="Bump counter" />
+    </Sequence>
+  </Sequence>
+</Activity>

@@ -49,6 +49,31 @@ importers:
         specifier: ^2.0.2
         version: 2.1.9(@types/node@20.19.39)
 
+  packages/credential-source:
+    dependencies:
+      '@rpa-platform/db':
+        specifier: workspace:*
+        version: link:../db
+      '@rpa-platform/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: ^0.33.0
+        version: 0.33.0(postgres@3.4.9)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.10
+        version: 20.19.39
+      '@vitest/coverage-v8':
+        specifier: ^2.0.2
+        version: 2.1.9(vitest@2.1.9(@types/node@20.19.39))
+      typescript:
+        specifier: ^5.5.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.2
+        version: 2.1.9(@types/node@20.19.39)
+
   packages/db:
     dependencies:
       '@rpa-platform/shared':

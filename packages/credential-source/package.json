@@ -1,5 +1,5 @@
 {
-  "name": "@rpa-platform/shared",
+  "name": "@rpa-platform/credential-source",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,22 +7,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./permissions": {
-      "types": "./dist/permissions/index.d.ts",
-      "import": "./dist/permissions/index.js"
-    },
-    "./errors": {
-      "types": "./dist/errors.d.ts",
-      "import": "./dist/errors.js"
-    },
-    "./crypto": {
-      "types": "./dist/crypto.d.ts",
-      "import": "./dist/crypto.js"
-    },
-    "./tenants": {
-      "types": "./dist/tenants.d.ts",
-      "import": "./dist/tenants.js"
     }
   },
   "scripts": {
@@ -30,6 +14,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rpa-platform/db": "workspace:*",
+    "@rpa-platform/shared": "workspace:*",
+    "drizzle-orm": "^0.33.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

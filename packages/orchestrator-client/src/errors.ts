@@ -1,11 +1,5 @@
 import { RpaPlatformError, type RpaPlatformErrorOptions } from "@rpa-platform/shared";
 
-export class OrchestratorEncryptionError extends RpaPlatformError {
-  constructor(reason: string, options: RpaPlatformErrorOptions = {}) {
-    super("orchestrator.encryption.invalid", `Orchestrator encryption error: ${reason}.`, options);
-  }
-}
-
 export class OrchestratorAuthError extends RpaPlatformError {
   constructor(reason: string, options: RpaPlatformErrorOptions = {}) {
     super("orchestrator.auth.unauthorized", `OAuth2 authorization failed: ${reason}.`, options);

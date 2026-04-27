@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
-import {
-  decryptSecret,
-  encryptSecret,
-  OrchestratorEncryptionError,
-  parseEncryptionKey,
-} from "../src/index.js";
+import { decryptSecret, encryptSecret, EncryptionError, parseEncryptionKey } from "../src/index.js";
 
 const validKey = randomBytes(32).toString("base64");
 
@@ -16,18 +11,16 @@ describe("parseEncryptionKey", () => {
   });
 
   it("rejects empty input", () => {
-    expect(() => parseEncryptionKey("")).toThrow(OrchestratorEncryptionError);
+    expect(() => parseEncryptionKey("")).toThrow(EncryptionError);
   });
 
   it("rejects non-string input", () => {
-    expect(() => parseEncryptionKey(undefined as unknown as string)).toThrow(
-      OrchestratorEncryptionError,
-    );
+    expect(() => parseEncryptionKey(undefined as unknown as string)).toThrow(EncryptionError);
   });
 
   it("rejects keys that decode to wrong length", () => {
     const tooShort = Buffer.alloc(16).toString("base64");
-    expect(() => parseEncryptionKey(tooShort)).toThrow(OrchestratorEncryptionError);
+    expect(() => parseEncryptionKey(tooShort)).toThrow(EncryptionError);
   });
 });
 
@@ -49,7 +42,7 @@ describe("encrypt/decrypt round-trip", () => {
     const key1 = parseEncryptionKey(validKey);
     const key2 = parseEncryptionKey(randomBytes(32).toString("base64"));
     const envelope = encryptSecret("plain", key1);
-    expect(() => decryptSecret(envelope, key2)).toThrow(OrchestratorEncryptionError);
+    expect(() => decryptSecret(envelope, key2)).toThrow(EncryptionError);
   });
 
   it("rejects tampered envelopes (auth tag verification)", () => {
@@ -61,22 +54,22 @@ describe("encrypt/decrypt round-trip", () => {
     if (lastByte === undefined) throw new Error("unexpected empty buffer");
     buffer[lastIndex] = lastByte ^ 0xff;
     const tampered = buffer.toString("base64");
-    expect(() => decryptSecret(tampered, key)).toThrow(OrchestratorEncryptionError);
+    expect(() => decryptSecret(tampered, key)).toThrow(EncryptionError);
   });
 
   it("rejects envelopes that are too short to contain IV+tag", () => {
     const key = parseEncryptionKey(validKey);
     const tooShort = Buffer.alloc(8).toString("base64");
-    expect(() => decryptSecret(tooShort, key)).toThrow(OrchestratorEncryptionError);
+    expect(() => decryptSecret(tooShort, key)).toThrow(EncryptionError);
   });
 
   it("rejects encrypt with wrong-sized key buffer", () => {
     const badKey = Buffer.alloc(16);
-    expect(() => encryptSecret("x", badKey)).toThrow(OrchestratorEncryptionError);
+    expect(() => encryptSecret("x", badKey)).toThrow(EncryptionError);
   });
 
   it("rejects decrypt with wrong-sized key buffer", () => {
     const badKey = Buffer.alloc(16);
-    expect(() => decryptSecret("AAAA", badKey)).toThrow(OrchestratorEncryptionError);
+    expect(() => decryptSecret("AAAA", badKey)).toThrow(EncryptionError);
   });
 });

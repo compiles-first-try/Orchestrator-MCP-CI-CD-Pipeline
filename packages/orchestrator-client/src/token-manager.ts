@@ -1,5 +1,5 @@
+import { decryptSecret } from "@rpa-platform/shared";
 import { z } from "zod";
-import { decryptSecret } from "./crypto.js";
 import { OrchestratorAuthError, OrchestratorTransportError } from "./errors.js";
 
 export type FetchFn = typeof globalThis.fetch;

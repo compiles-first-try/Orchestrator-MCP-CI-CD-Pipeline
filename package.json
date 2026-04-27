@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "config:export": "pnpm --filter @rpa-platform/config-cli config:export",
-    "config:import": "pnpm --filter @rpa-platform/config-cli config:import"
+    "config:import": "pnpm --filter @rpa-platform/config-cli config:import",
+    "seed": "pnpm --filter @rpa-platform/seed seed"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

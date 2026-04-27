@@ -24,13 +24,13 @@ repo.
 
 ## Branch ↔ tenant mapping
 
-| Branch  | Tenant | Reconcile?                                          |
-| ------- | ------ | --------------------------------------------------- |
-| `dev`   | dev    | auto-apply on push                                  |
-| `test`  | test   | dry-run on PR, apply on merge with approval         |
-| `stage` | stage  | requires `PR_APPROVE_TEST_TO_STAGE`                 |
-| `main`  | prod   | BA-only approval (`PR_APPROVE_STAGE_TO_PROD`)       |
-| `feature/*` | none | branch protection only, no reconcile             |
+| Branch      | Tenant | Reconcile?                                    |
+| ----------- | ------ | --------------------------------------------- |
+| `dev`       | dev    | auto-apply on push                            |
+| `test`      | test   | dry-run on PR, apply on merge with approval   |
+| `stage`     | stage  | requires `PR_APPROVE_TEST_TO_STAGE`           |
+| `main`      | prod   | BA-only approval (`PR_APPROVE_STAGE_TO_PROD`) |
+| `feature/*` | none   | branch protection only, no reconcile          |
 
 Direct pushes to `test`, `stage`, and `main` are blocked by branch protection.
 All promotions go through PR merges.
@@ -46,6 +46,7 @@ All promotions go through PR merges.
 ## What this project does NOT contain
 
 Do not commit:
+
 - Actual credential values (use the platform's credential management).
 - `*.xlsx` files (they're a local-only round-trip artifact).
 - Anything under `.tmp/` or `dist/`.

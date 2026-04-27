@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rpa-postgres
+    environment:
+      POSTGRES_USER: rpa
+      POSTGRES_PASSWORD: rpa
+      POSTGRES_DB: rpa_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - rpa-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpa -d rpa_platform"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  mock-orchestrator-mcp:
+    build:
+      context: ./mocks/mock-orchestrator-mcp
+    container_name: rpa-mock-orchestrator-mcp
+    ports:
+      - "4000:4000"
+    environment:
+      MOCK_PORT: "4000"
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    container_name: rpa-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-orchestrator-mcp:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://rpa:rpa@postgres:5432/rpa_platform
+      ORCHESTRATOR_MCP_URL: http://mock-orchestrator-mcp:4000
+      RPA_PLATFORM_ENCRYPTION_KEY: ${RPA_PLATFORM_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+      LOG_LEVEL: info
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+
+  slack-bot:
+    build:
+      context: ..
+      dockerfile: infra/slack-bot.Dockerfile
+    container_name: rpa-slack-bot
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-dev-signing-secret-replace-me}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-xoxb-dev-replace-me}
+      RPA_API_URL: http://api:3000
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+
+volumes:
+  rpa-postgres-data:

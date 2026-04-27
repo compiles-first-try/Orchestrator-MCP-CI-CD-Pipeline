@@ -1,0 +1,46 @@
+name: "rpa-platform reconcile"
+description: "Trigger an rpa-platform reconcile dry-run or apply against the configured API."
+author: "rpa-platform"
+inputs:
+  api-url:
+    description: "apps/api base URL (no trailing slash)."
+    required: true
+  api-token:
+    description: "Shared secret used to authenticate to apps/api. Pass as a repository secret; never inline."
+    required: true
+  project-name:
+    description: "rpa-platform project name (matches the projects.name column)."
+    required: true
+  tenant:
+    description: "Target tenant. One of: dev, test, stage, prod."
+    required: true
+  mode:
+    description: "reconcile mode. One of: dry-run, apply."
+    required: true
+  branch:
+    description: "The branch this reconcile is triggered for."
+    required: true
+  commit-sha:
+    description: "The commit SHA being reconciled. The API records this in audit_log."
+    required: true
+  approver-login:
+    description: |
+      The GitHub login of the user whose approval triggered this run. Used by
+      apps/api to look up the platform user and re-check the §7 permission.
+      Required for `apply`; optional for `dry-run`.
+    required: false
+runs:
+  using: composite
+  steps:
+    - name: "Send reconcile request"
+      shell: bash
+      env:
+        RPA_API_URL: ${{ inputs.api-url }}
+        RPA_API_TOKEN: ${{ inputs.api-token }}
+        RPA_PROJECT_NAME: ${{ inputs.project-name }}
+        RPA_TENANT: ${{ inputs.tenant }}
+        RPA_MODE: ${{ inputs.mode }}
+        RPA_BRANCH: ${{ inputs.branch }}
+        RPA_COMMIT_SHA: ${{ inputs.commit-sha }}
+        RPA_APPROVER_LOGIN: ${{ inputs.approver-login }}
+      run: node ${{ github.action_path }}/dist/run.js

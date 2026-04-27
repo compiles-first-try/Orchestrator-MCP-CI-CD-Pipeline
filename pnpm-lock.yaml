@@ -73,6 +73,28 @@ importers:
         specifier: ^2.0.2
         version: 2.1.9(@types/node@20.19.39)
 
+  apps/github-action:
+    dependencies:
+      '@rpa-platform/github-client':
+        specifier: workspace:*
+        version: link:../../packages/github-client
+      '@rpa-platform/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.10
+        version: 20.19.39
+      '@vitest/coverage-v8':
+        specifier: ^2.0.2
+        version: 2.1.9(vitest@2.1.9(@types/node@20.19.39))
+      typescript:
+        specifier: ^5.5.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.2
+        version: 2.1.9(@types/node@20.19.39)
+
   apps/slack-bot:
     dependencies:
       '@rpa-platform/shared':

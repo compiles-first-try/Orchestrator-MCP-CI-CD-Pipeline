@@ -9,3 +9,20 @@ export {
   type DrizzleAuditWriterConfig,
   InMemoryAuditWriter,
 } from "./services/audit.js";
+export { type Authenticator, type AuthContext, TestAuthenticator } from "./auth.js";
+export {
+  requireAuth,
+  requirePermission,
+  requireDynamicPermission,
+  type ContextResolver,
+  type PermissionResolver,
+} from "./permissions-mw.js";
+export {
+  type ReconcileRequestBody,
+  type ReconcileContext,
+  type DryRunOutcome,
+  type ApplyOutcome,
+  type DryRunRunner,
+  type ApplyRunner,
+} from "./services/reconcile.js";
+export { reconcileRoutes, type ReconcileRoutesDeps } from "./routes/reconcile.js";

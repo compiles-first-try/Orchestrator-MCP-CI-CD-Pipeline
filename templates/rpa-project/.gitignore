@@ -1,0 +1,16 @@
+# Local-only Excel round-trip artifacts. Never commit.
+*.xlsx
+
+# Local secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Build artifacts
+node_modules/
+dist/
+.tmp/

@@ -1,0 +1,69 @@
+name: rpa-platform reconcile
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [test, stage, main]
+  pull_request_target:
+    types: [closed]
+    branches: [test, stage, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dry-run:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target tenant
+        id: tenant
+        shell: bash
+        run: |
+          case "${{ github.base_ref || github.ref_name }}" in
+            test)  echo "value=test"  >> "$GITHUB_OUTPUT" ;;
+            stage) echo "value=stage" >> "$GITHUB_OUTPUT" ;;
+            main)  echo "value=prod"  >> "$GITHUB_OUTPUT" ;;
+            dev)   echo "value=dev"   >> "$GITHUB_OUTPUT" ;;
+            *)     echo "value=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: rpa-platform reconcile (dry-run)
+        uses: ./.github/actions/rpa-platform
+        with:
+          api-url: ${{ secrets.RPA_API_URL }}
+          api-token: ${{ secrets.RPA_API_TOKEN }}
+          project-name: ${{ github.event.repository.name }}
+          tenant: ${{ steps.tenant.outputs.value }}
+          mode: dry-run
+          branch: ${{ github.base_ref || github.ref_name }}
+          commit-sha: ${{ github.sha }}
+
+  apply:
+    if: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merged == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target tenant
+        id: tenant
+        shell: bash
+        run: |
+          case "${{ github.base_ref }}" in
+            test)  echo "value=test"  >> "$GITHUB_OUTPUT" ;;
+            stage) echo "value=stage" >> "$GITHUB_OUTPUT" ;;
+            main)  echo "value=prod"  >> "$GITHUB_OUTPUT" ;;
+            dev)   echo "value=dev"   >> "$GITHUB_OUTPUT" ;;
+            *)     echo "value=dev"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: rpa-platform reconcile (apply)
+        uses: ./.github/actions/rpa-platform
+        with:
+          api-url: ${{ secrets.RPA_API_URL }}
+          api-token: ${{ secrets.RPA_API_TOKEN }}
+          project-name: ${{ github.event.repository.name }}
+          tenant: ${{ steps.tenant.outputs.value }}
+          mode: apply
+          branch: ${{ github.base_ref }}
+          commit-sha: ${{ github.event.pull_request.merge_commit_sha }}
+          approver-login: ${{ github.event.pull_request.merged_by.login }}

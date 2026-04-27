@@ -1,0 +1,7 @@
+[
+  {
+    "name": "Config",
+    "storageProvider": "orchestrator",
+    "description": "Generated Config.json + (optional) Config.xlsx target"
+  }
+]

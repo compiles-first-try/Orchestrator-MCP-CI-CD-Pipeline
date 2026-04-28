@@ -1,0 +1,24 @@
+# Build artifacts and dependency caches — never copy into a Docker context.
+**/node_modules
+**/dist
+**/.tmp
+**/coverage
+**/*.tsbuildinfo
+
+# Source-control + editor cruft.
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.log
+
+# Local-only docs and research that don't belong in runtime images.
+docs/research
+
+# Local environment files. Compose passes secrets via env at runtime.
+.env
+.env.*
+
+# Excel round-trip artifacts (always local-only per CLAUDE.md).
+*.xlsx

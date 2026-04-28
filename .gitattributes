@@ -1,0 +1,16 @@
+# Default to LF line endings everywhere. Avoids CRLF-from-Windows breaking
+# shell scripts inside Linux containers and keeps diffs clean across OSes.
+* text=auto eol=lf
+
+# Windows-only batch files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files Git should not try to normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.xlsx binary
+*.zip binary

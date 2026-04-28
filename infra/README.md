@@ -7,11 +7,43 @@ dependencies.
 
 ## Quick start
 
+From the workspace root (one level up from this directory):
+
 ```sh
-docker compose up -d            # postgres + api + slack-bot + mock-orchestrator-mcp
+# 1. Generate a 32-byte AES key for the platform (run once, save it locally).
+#    Linux/macOS:
+openssl rand -base64 32
+#    Windows PowerShell:
+[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+
+# 2. Export it (and any other env you want to override) before bringing the stack up.
+#    Linux/macOS:
+export RPA_PLATFORM_ENCRYPTION_KEY="<paste base64 from step 1>"
+#    Windows PowerShell:
+$env:RPA_PLATFORM_ENCRYPTION_KEY = "<paste base64 from step 1>"
+
+# 3. Bring everything up.
+docker compose -f infra/docker-compose.yml up -d --build
+
+# 4. Run migrations + seed.
 pnpm --filter @rpa-platform/db db:migrate
-pnpm seed                       # seeds users, framework releases, demo-bot, 4 tenants
+pnpm seed
 ```
+
+### Windows 11 + Docker Desktop notes
+
+- Docker Desktop must be running with the **WSL 2 backend** (Settings → General).
+- Clone this repo with `core.autocrlf=input` or `false` so shell scripts
+  inside containers don't get CRLF line endings. The `.gitattributes`
+  at the workspace root already pins `eol=lf` for source files; on a
+  fresh clone Git will respect that.
+- If `docker compose` complains about the build context being too
+  large, double-check that `.dockerignore` at the workspace root is
+  present — it excludes `node_modules` (~hundreds of MB) and `dist`.
+- Ports 3000 (api), 3001 (slack-bot), 4000 (mock-orchestrator-mcp),
+  and 5432 (postgres) must be free on the Windows host. If you have
+  another Postgres running, change the host-side mapping in
+  `docker-compose.yml`.
 
 ## What's seeded
 

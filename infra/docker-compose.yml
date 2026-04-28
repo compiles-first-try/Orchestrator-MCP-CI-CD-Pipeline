@@ -18,7 +18,8 @@ services:
 
   mock-orchestrator-mcp:
     build:
-      context: ./mocks/mock-orchestrator-mcp
+      context: ..
+      dockerfile: infra/mocks/mock-orchestrator-mcp/Dockerfile
     container_name: rpa-mock-orchestrator-mcp
     ports:
       - "4000:4000"

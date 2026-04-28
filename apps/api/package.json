@@ -18,8 +18,10 @@
     "start": "node dist/start.js"
   },
   "dependencies": {
+    "@rpa-platform/config-schema": "workspace:*",
     "@rpa-platform/credential-source": "workspace:*",
     "@rpa-platform/db": "workspace:*",
+    "@rpa-platform/github-client": "workspace:*",
     "@rpa-platform/orchestrator-client": "workspace:*",
     "@rpa-platform/reconciler": "workspace:*",
     "@rpa-platform/shared": "workspace:*",

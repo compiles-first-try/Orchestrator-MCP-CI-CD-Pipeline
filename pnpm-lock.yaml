@@ -29,12 +29,18 @@ importers:
 
   apps/api:
     dependencies:
+      '@rpa-platform/config-schema':
+        specifier: workspace:*
+        version: link:../../packages/config-schema
       '@rpa-platform/credential-source':
         specifier: workspace:*
         version: link:../../packages/credential-source
       '@rpa-platform/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@rpa-platform/github-client':
+        specifier: workspace:*
+        version: link:../../packages/github-client
       '@rpa-platform/orchestrator-client':
         specifier: workspace:*
         version: link:../../packages/orchestrator-client

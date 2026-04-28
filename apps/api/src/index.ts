@@ -26,3 +26,18 @@ export {
   type ApplyRunner,
 } from "./services/reconcile.js";
 export { reconcileRoutes, type ReconcileRoutesDeps } from "./routes/reconcile.js";
+export {
+  type ProjectLookup,
+  type ProjectRow,
+  type TenantRow,
+  DrizzleProjectLookup,
+  parseRepoUrl,
+} from "./services/project-lookup.js";
+export {
+  createReconcileRunners,
+  ProjectFileMissingError,
+  ProjectNotFoundError,
+  TenantNotConfiguredForOAuthError,
+  TenantNotFoundError,
+  type ReconcileRunnerDeps,
+} from "./services/reconcile-runner.js";

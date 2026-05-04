@@ -20,6 +20,12 @@ export const PERMISSIONS = {
   FRAMEWORK_READ: "framework.read",
   FRAMEWORK_WRITE: "framework.write",
   FRAMEWORK_RELEASE: "framework.release",
+  // Tenant-scoped: who can make the reconciler perform *deletes* against
+  // Orchestrator entities for a given tenant. Layered with the Orchestrator
+  // capability check (`Assets.Delete`, `Queues.Delete`, …) — both must
+  // agree before a delete actually runs. Prod is intentionally absent from
+  // every grant; production deletes happen in the Orchestrator UI only.
+  RECONCILE_DELETE: "reconcile.delete",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

@@ -1,0 +1,28 @@
+{
+  "name": "@rpa-platform/config-output",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rpa-platform/shared": "workspace:*",
+    "@rpa-platform/config-schema": "workspace:*",
+    "@rpa-platform/framework-version": "workspace:*",
+    "@rpa-platform/orchestrator-client": "workspace:*",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@vitest/coverage-v8": "^2.0.2",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.2"
+  }
+}

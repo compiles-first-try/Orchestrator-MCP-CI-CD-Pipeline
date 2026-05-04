@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "buckets": [
+    {
+      "name": "config",
+      "description": "Bucket the platform writes Config.json (and Config.xlsx) to."
+    }
+  ]
+}

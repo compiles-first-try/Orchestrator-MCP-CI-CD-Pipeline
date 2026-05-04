@@ -1,0 +1,58 @@
+# Slack app manifest for the rpa-platform bot.
+#
+# Two ways to use this:
+#   1. https://api.slack.com/apps → "Create New App" → "From an app manifest"
+#      → choose your workspace → paste this YAML.
+#   2. Via Slack CLI: `slack app create --manifest infra/slack-app-manifest.yaml`
+#
+# After creating the app, you still need to:
+#   • Install to your workspace (OAuth & Permissions → Install)
+#   • Generate an App-Level Token with `connections:write` scope
+#     (Basic Information → App-Level Tokens) — only needed for Socket Mode.
+#   • Copy the Bot Token, Signing Secret, and (Socket Mode only) App Token
+#     into your .env. See docs/SETUP.md.
+
+display_information:
+  name: rpa-platform
+  description: "Slack-first internal platform for UiPath RPA development."
+  background_color: "#1d3557"
+  long_description: |
+    Provision new RPA project repos from a UiPath REFramework template,
+    capture per-tenant Orchestrator credentials securely via modal, and run
+    Git-driven reconciles end-to-end — all from this single bot. Audit-trailed,
+    role-gated, and never logs credentials in chat.
+
+features:
+  bot_user:
+    display_name: rpa-platform
+    always_online: true
+
+  slash_commands:
+    - command: /rpa
+      description: "Manage RPA projects, reconciles, and tenant credentials."
+      usage_hint: "help | new <name> ... | tenant connect | reconcile <project> <tenant> | apply <project> <tenant>"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write           # post replies and DMs (tenant-connect results)
+      - commands             # receive /rpa
+      - users:read           # resolve user.id → profile
+      - users:read.email     # email used by Slack→Orchestrator identity resolver
+
+settings:
+  event_subscriptions:
+    bot_events: []           # we don't subscribe to channel/message events in v1
+
+  interactivity:
+    is_enabled: true         # required so views.open / view_submission work
+    # When using HTTP mode (production), set the request URL pointing at
+    # `<API_BASE_URL>/slack/events` (or wherever you proxy Bolt). For local
+    # dev with Socket Mode below, leave commented out.
+    # request_url: https://your-public-host/slack/events
+
+  org_deploy_enabled: false
+  socket_mode_enabled: true  # local dev: requires SLACK_APP_TOKEN. Switch to
+                             # false for production HTTP mode.
+  token_rotation_enabled: false

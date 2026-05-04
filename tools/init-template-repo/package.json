@@ -1,0 +1,23 @@
+{
+  "name": "@rpa-platform/init-template-repo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "init-template-repo": "./dist/init.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo 'init-template-repo is a one-shot CLI; smoke-tested manually per docs/SETUP.md'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.2"
+  }
+}

@@ -1,0 +1,51 @@
+name: "rpa-platform reconcile"
+description: "Calls the rpa-platform API to dry-run or apply a reconcile from a GitHub workflow."
+inputs:
+  api-base-url:
+    description: "Base URL of the rpa-platform API (e.g. https://api.rpa.example.com)."
+    required: true
+  api-token:
+    description: "Bearer token issued to the GitHub Action by the rpa-platform team. NEVER hard-code in workflow files; pull from a repo secret."
+    required: true
+  project:
+    description: "Project name (matches the rpa-platform `projects.name` column)."
+    required: true
+  tenant:
+    description: "Target tenant: dev, test, stage, or prod."
+    required: true
+  mode:
+    description: "Either 'dry-run' (default) or 'apply'."
+    required: false
+    default: "dry-run"
+runs:
+  using: "composite"
+  steps:
+    - name: POST to rpa-platform API
+      shell: bash
+      env:
+        API_BASE_URL: ${{ inputs.api-base-url }}
+        API_TOKEN: ${{ inputs.api-token }}
+        PROJECT: ${{ inputs.project }}
+        TENANT: ${{ inputs.tenant }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        if [[ "${MODE}" != "dry-run" && "${MODE}" != "apply" ]]; then
+          echo "::error ::mode must be 'dry-run' or 'apply'"
+          exit 1
+        fi
+        endpoint="/reconcile/${MODE}"
+        response="$(mktemp)"
+        status=$(curl -sS -o "$response" -w "%{http_code}" \
+          -X POST "${API_BASE_URL}${endpoint}" \
+          -H "Authorization: Bearer ${API_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -H "X-RPA-Project: ${PROJECT}" \
+          -H "X-RPA-Tenant: ${TENANT}" \
+          -d '{}')
+        cat "$response"
+        echo
+        if [[ "$status" -ge 400 ]]; then
+          echo "::error ::rpa-platform API returned HTTP $status"
+          exit 1
+        fi

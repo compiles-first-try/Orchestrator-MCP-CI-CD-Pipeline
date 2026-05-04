@@ -45,8 +45,8 @@ const MATRIX: Record<PermissionKey, Record<SystemRoleName, MatrixCell>> = {
   [PERMISSIONS.PR_OPEN_TEST_TO_STAGE]: { developer: false, admin: true, ba: false },
   [PERMISSIONS.PR_OPEN_STAGE_TO_PROD]: { developer: false, admin: false, ba: true },
   [PERMISSIONS.PR_APPROVE_DEV_TO_TEST]: { developer: false, admin: true, ba: false },
-  [PERMISSIONS.PR_APPROVE_TEST_TO_STAGE]: { developer: false, admin: true, ba: false },
-  [PERMISSIONS.PR_APPROVE_STAGE_TO_PROD]: { developer: false, admin: false, ba: true },
+  [PERMISSIONS.PR_APPROVE_TEST_TO_STAGE]: { developer: false, admin: true, ba: true },
+  [PERMISSIONS.PR_APPROVE_STAGE_TO_PROD]: { developer: false, admin: true, ba: true },
   [PERMISSIONS.ANNOTATION_EDIT_DEV]: { developer: true, admin: true, ba: false },
   [PERMISSIONS.ANNOTATION_EDIT_TEST]: { developer: true, admin: true, ba: false },
   [PERMISSIONS.ROLE_CREATE]: { developer: false, admin: true, ba: false },
@@ -66,6 +66,17 @@ const MATRIX: Record<PermissionKey, Record<SystemRoleName, MatrixCell>> = {
     developer: { dev: true, test: false, stage: false, prod: false },
     admin: { dev: true, test: true, stage: true, prod: true },
     ba: { dev: false, test: false, stage: false, prod: false },
+  },
+  // Tiered delete policy (memory: tiered_delete_policy):
+  //   • developer can delete on dev only
+  //   • admin can delete on dev/test/stage (NOT prod)
+  //   • BA can delete on stage only
+  //   • prod is intentionally false for everyone — production deletes
+  //     happen in the Orchestrator UI, not via the platform.
+  [PERMISSIONS.RECONCILE_DELETE]: {
+    developer: { dev: true, test: false, stage: false, prod: false },
+    admin: { dev: true, test: true, stage: true, prod: false },
+    ba: { dev: false, test: false, stage: true, prod: false },
   },
 };
 

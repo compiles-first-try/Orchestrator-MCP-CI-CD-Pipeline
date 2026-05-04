@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "OrchestratorAlertsEmail": "alerts@example.com",
+    "MaxRetryNumber": 3,
+    "LogF_BusinessProcessName": "{project-name}"
+  }
+}

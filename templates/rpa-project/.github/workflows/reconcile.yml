@@ -1,0 +1,40 @@
+name: rpa-platform reconcile
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [test, stage, main]
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve target tenant
+        id: tenant
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            echo "tenant=dev" >> "$GITHUB_OUTPUT"
+            echo "mode=apply" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_BASE_REF}" == "test" ]]; then
+            echo "tenant=test" >> "$GITHUB_OUTPUT"
+            echo "mode=dry-run" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_BASE_REF}" == "stage" ]]; then
+            echo "tenant=stage" >> "$GITHUB_OUTPUT"
+            echo "mode=dry-run" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_BASE_REF}" == "main" ]]; then
+            echo "tenant=prod" >> "$GITHUB_OUTPUT"
+            echo "mode=dry-run" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error ::Unrecognised branch context"
+            exit 1
+          fi
+      - uses: compiles-first-try/Orchestrator-MCP-CI-CD-Pipeline/apps/github-action@main
+        with:
+          api-base-url: ${{ vars.RPA_PLATFORM_API_URL }}
+          api-token: ${{ secrets.RPA_PLATFORM_TOKEN }}
+          project: ${{ github.event.repository.name }}
+          tenant: ${{ steps.tenant.outputs.tenant }}
+          mode: ${{ steps.tenant.outputs.mode }}

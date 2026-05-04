@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "{project-name}",
+  "description": "Replace with a one-line description of what this RPA project does.",
+  "owners": ["TODO@example.com"],
+  "frameworkVersion": "1.0.0",
+  "links": {
+    "wiki": null,
+    "businessRequirements": null
+  }
+}

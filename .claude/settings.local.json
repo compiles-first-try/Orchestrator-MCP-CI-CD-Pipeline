@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone *)",
+      "PowerShell($src = 'd:\\\\Projects\\\\Orchestrator-Slack-CI-CD\\\\.tmp_clone'; $dst = 'd:\\\\Projects\\\\Orchestrator-Slack-CI-CD'; Get-ChildItem -Path $src -Force | ForEach-Object { $target = Join-Path $dst $_.Name; if \\($_.Name -eq '.claude'\\) { Get-ChildItem -Path $_.FullName -Force | ForEach-Object { Move-Item -Path $_.FullName -Destination \\(Join-Path $dst '.claude'\\) -Force } } else { Move-Item -Path $_.FullName -Destination $target -Force } }; Remove-Item -Path $src -Recurse -Force; Get-ChildItem -Path $dst -Force | Select-Object Name)",
+      "Bash(git -C \"d:/Projects/Orchestrator-Slack-CI-CD\" status)",
+      "Bash(git -C \"d:/Projects/Orchestrator-Slack-CI-CD\" branch -vv)",
+      "Bash(git -C \"d:/Projects/Orchestrator-Slack-CI-CD\" remote -v)",
+      "Bash(git -C \"d:/Projects/Orchestrator-Slack-CI-CD\" log --oneline -15)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm test *)",
+      "WebFetch(domain:docs.uipath.com)",
+      "Bash(pnpm --filter @rpa-platform/config-schema typecheck)",
+      "Bash(pnpm --filter @rpa-platform/shared test)",
+      "Bash(pnpm --filter @rpa-platform/orchestrator-client test)",
+      "Bash(pnpm --filter @rpa-platform/orchestrator-client typecheck)",
+      "Bash(pnpm --filter @rpa-platform/xaml-parser test)",
+      "Bash(pnpm --filter @rpa-platform/config-output test)",
+      "Bash(pnpm --filter @rpa-platform/reconciler test)",
+      "Bash(pnpm --filter @rpa-platform/slack-bot typecheck)",
+      "Bash(pnpm --filter @rpa-platform/slack-bot test)",
+      "Bash(pnpm --filter @rpa-platform/init-template-repo typecheck)"
+    ]
+  }
+}

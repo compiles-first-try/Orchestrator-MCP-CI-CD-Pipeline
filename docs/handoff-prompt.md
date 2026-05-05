@@ -1,103 +1,54 @@
 # Handoff prompt — paste into a new Claude Code session
 
-Use the block below as the first message in a new chat to continue building
-the `rpa-platform` system. It is self-contained: it tells the new session
-where the repo is, what's done, what's next, and what guardrails to follow.
+The block below is self-contained — paste it verbatim as the first message
+of a new chat to continue testing.
 
 ---
 
 ```
-We are continuing the build of `rpa-platform`, a Slack-first internal platform
-for UiPath RPA development. The project lives at:
+We are mid-testing the rpa-platform on my Windows machine.
 
-  /home/user/Orchestrator-MCP-CI-CD-Pipeline
+Repo:    D:\Projects\Orchestrator-Slack-CI-CD  (the rpa-platform monorepo)
+Branch:  claude/add-claude-documentation-LwYFS
+Remote:  https://github.com/compiles-first-try/Orchestrator-MCP-CI-CD-Pipeline.git
 
-Active branch: claude/add-claude-documentation-LwYFS
-Repo (GitHub MCP scope): compiles-first-try/orchestrator-mcp-ci-cd-pipeline
+Before doing ANYTHING, read these in order:
+  1. memory/MEMORY.md (full index of project memories)
+  2. memory/session_2026_05_04_state.md (most recent state — picks up where the last session ended)
+  3. CLAUDE.md (project guardrails)
+  4. docs/QUICKSTART.md (the testing walkthrough — I'm at Step 12)
 
-Before doing anything else:
+I have:
+  - Successfully bootstrapped the GitHub template repo at compiles-first-try/reframework-base-template (4 branches, dev as default).
+  - Stood up the docker-compose stack (postgres, mocks, api, slack-bot) on host port 5433 for postgres.
+  - Migrated + seeded the database (3 roles, 2 framework releases).
+  - Connected the Slack bot to my workspace "Ideal Lab" — `/rpa help` works in my test channel.
 
-1. Read CLAUDE.md at the repo root. It captures the non-negotiable invariants,
-   the architecture seams, the target layout, what's already built, and what's
-   left.
-2. The full v5 spec lives in the conversation upload that started this build —
-   it is the source of truth for parts not yet implemented. Treat the spec as
-   canonical when in doubt; when code and spec disagree, ASK the user before
-   reconciling.
-3. Run `pnpm test` and `pnpm typecheck` from the repo root to confirm the
-   workspace is green before making changes.
+I have NOT yet:
+  - Run `/rpa new` to provision my first project repo (Step 12).
+  - Run `/rpa tenant connect` to wire my real Orchestrator dev tenant (Step 13).
+  - Driven any real reconcile against my Orchestrator (Step 15+).
 
-What's already built (per §21 of the spec):
+Resume at QUICKSTART Step 12. If the docker stack is down, bring it back with:
+    docker compose -f infra/docker-compose.yml up -d
 
-- Monorepo skeleton: pnpm workspaces, Turborepo, strict TS (`tsconfig.base.json`),
-  Prettier. Node 20 LTS targeted, pnpm 10.
-- packages/shared: RpaPlatformError hierarchy (incl. NotImplementedError,
-  PermissionDeniedError, TenantNotConnectedError keyed to the spec's
-  `reconcile.blocked_unconfigured_tenant` audit code), TenantName, the §7
-  permissions matrix encoded as test fixtures and asserted exhaustively
-  (every role × permission × tenant cell). Coverage on src/permissions/**
-  is gated at 100% and currently green.
-- packages/db: Drizzle schema for all §5 tables with pg enums for tenant name,
-  tenant status, audit transport, PR approval status, reconcile status.
-  Initial migration committed at packages/db/migrations/0000_initial_schema.sql.
-  createDatabase() factory wires Drizzle to postgres-js.
+Behaviour I want from you (carried over from the previous session):
+  - Default to running diagnostic / verification commands yourself via the Bash tool. Don't ask me to run things you can run.
+  - Ask only for destructive actions, anything that exposes secrets, or anything that pushes/PRs.
+  - Be honest when you ship something pragmatic — flag the trade-off explicitly so I can push back BEFORE you ship rather than after.
 
-What's next (recommended sequence per §21):
+Known unfinished work the previous session left:
+  - `/rpa list` and `/rpa info` are not implemented (help text now footnotes them).
+  - `pnpm sim:commit` posts empty config payloads — fine for smoke-testing the wire, but the "edit a config file → see Orchestrator change" loop needs either a GitHub Action workflow added to project repos OR sim:commit updated to read configs from the project repo's git tree.
+  - Local commits since `cb8e172` (the last push) include real bug fixes — the previous session asked me to commit + push them. Confirm with me and do it.
 
-4. packages/config-schema — JSON Schema + zod validators for the project
-   config files described in §6 (settings.json, constants.json, assets.json,
-   queues.json, buckets.json, credentials.json, overrides.json).
-5. packages/framework-version — semver compare + JSON-ready detection
-   (reads framework_releases.json_ready against a project's pinned version).
-6. packages/orchestrator-client — MCP-first client with REST fallback per
-   operation, tool discovery at startup, OAuth2 client-credentials token
-   manager (cached, refreshed at 80% of expires_in), AES-256-GCM
-   encryption of client_secret. Per spec §10.5, do this BEFORE any package
-   that depends on it.
-
-Skill available for step 6 (and anything UiPath-facing):
-
-- /uipath-research — defined at .claude/skills/uipath-research/SKILL.md.
-  Use it BEFORE implementing orchestrator-client to verify which MCP tools
-  UiPath Cloud currently exposes for Assets, Queues, Buckets, Bucket files,
-  and Credentials, and whether bucket file upload still requires REST
-  fallback. The skill produces dated, cited reports in docs/research/.
-
-Invariants to keep front-of-mind (from CLAUDE.md):
-
-- Governance is a property of every action: role-gated, dry-runnable,
-  audit-logged with correlation_id.
-- MCP-primary, REST-fallback for every Orchestrator op. Transport choice
-  recorded per audit row. MCP transport errors are NOT auto-retried on REST.
-- OAuth2 client credentials is the only Orchestrator auth method. client_id
-  plain, client_secret AES-256-GCM in the DB, tokens never persisted.
-- Partial tenant onboarding is first-class: pending_credentials → connected
-  → auth_failed lifecycle. Reconcile against an unconnected tenant must be
-  rejected with the spec's exact audit code.
-- TypeScript strict, no `any`. Validate every external boundary with zod.
-- Don't introduce a dependency not listed in §3 of the spec without asking.
-- Don't open a PR unless explicitly asked.
-
-Style discipline (from CLAUDE.md and the project's CLAUDE Code instructions):
-
-- Verbose-but-explicit code over clever code (the maintainer has dyslexia/ADD).
-- Named exports, not default exports. Functions under ~40 lines.
-- No business logic in route handlers — handlers parse, validate, delegate.
-- Default to writing no comments. Only add one when the WHY is non-obvious.
-- Don't add error handling, fallbacks, or validation for scenarios that can't
-  happen. Trust internal code; only validate at system boundaries.
-
-When you start: confirm you've read CLAUDE.md, summarize what step you're
-picking up at, and tell me what you intend to build before you build it.
+Your first move: read those files, then check the docker stack status, then tell me you're ready and what you understand about where we are.
 ```
 
 ---
 
-## Tips for the new session
+## Notes for the operator (you, not the new Claude session)
 
-- The spec doc is large. If the new session doesn't have it in context, paste
-  it (or just §6, §10, §10.5, §21 — those cover the next three packages).
-- If the new session asks "should I open a PR" — the answer is no unless the
-  user asks.
-- The `uipath-research` skill is project-scoped (lives at
-  `.claude/skills/uipath-research/SKILL.md`) so it travels with the repo.
+- You don't strictly NEED to paste this prompt. The new Claude session will read `MEMORY.md` and `session_2026_05_04_state.md` automatically when prompted by anything that touches the project. But pasting this verbatim is faster and more deterministic — it tells the new session what page you're on so it doesn't need to infer.
+- If you want the new session to skip ahead to a specific step (e.g. "skip to Step 14, I already did 12 and 13"), just edit the "Resume at" line before pasting.
+- The previous session's git commits live at `cb8e172` on origin. Local-only edits since then (the docker-compose port + env_file fixes, seed.ts rewrite, init-template-repo shell-fix, root package.json updates, slack-bot help-text fix) are summarised in `memory/session_2026_05_04_state.md`. The new session should commit + push these on your say-so.

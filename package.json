@@ -2,6 +2,7 @@
   "name": "rpa-platform",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Slack-first internal platform for UiPath RPA development. Git-driven, audit-trailed, role-gated.",
   "engines": {
     "node": ">=20.0.0",
@@ -21,6 +22,8 @@
     "init-template": "tsx tools/init-template-repo/src/init.ts"
   },
   "devDependencies": {
+    "@rpa-platform/db": "workspace:*",
+    "@rpa-platform/shared": "workspace:*",
     "@types/node": "^20.14.10",
     "prettier": "^3.3.3",
     "tsx": "^4.16.0",

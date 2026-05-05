@@ -8,6 +8,12 @@ importers:
 
   .:
     devDependencies:
+      '@rpa-platform/db':
+        specifier: workspace:*
+        version: link:packages/db
+      '@rpa-platform/shared':
+        specifier: workspace:*
+        version: link:packages/shared
       '@types/node':
         specifier: ^20.14.10
         version: 20.19.39

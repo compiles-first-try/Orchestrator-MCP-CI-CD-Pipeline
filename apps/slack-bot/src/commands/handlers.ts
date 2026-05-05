@@ -37,14 +37,14 @@ export const helpHandler: CommandHandler = async () =>
   reply(
     [
       "*rpa-platform commands*",
-      "`/rpa list` — list projects",
-      "`/rpa info <project>` — project metadata",
-      "`/rpa reconcile <project> <tenant>` — dry-run reconcile against an Orchestrator tenant",
-      "`/rpa apply <project> <tenant>` — apply a reconcile (requires approval where applicable)",
       "`/rpa new <name> \"desc\" owners=<email>` — provision a new project repo from the framework template",
       "`/rpa tenant connect` — opens a secure form to wire a tenant's OAuth credentials",
-      "`/rpa edit` — *(arrives in v2 — for now, edit on your machine and commit)*",
+      "`/rpa reconcile <project> <tenant>` — dry-run reconcile against an Orchestrator tenant",
+      "`/rpa apply <project> <tenant>` — apply a reconcile (requires approval where applicable)",
+      "`/rpa edit` — _arrives in v2 — for now, edit on your machine and commit_",
       "`/rpa help` — this message",
+      "",
+      "_`/rpa list` and `/rpa info` are listed in some older docs but not wired in v1 — coming next._",
     ].join("\n"),
     "ephemeral",
   );

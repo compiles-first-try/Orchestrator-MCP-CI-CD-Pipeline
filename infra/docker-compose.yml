@@ -6,7 +6,11 @@ services:
       POSTGRES_PASSWORD: rpa
       POSTGRES_DB: rpa_platform
     ports:
-      - "5432:5432"
+      # Host port 5433 → container port 5432. Avoids conflict when the host
+      # already has another postgres bound to 5432 (native install, or a
+      # different project's Docker container). Internal container-to-container
+      # communication still uses 5432 — see the api service's DATABASE_URL.
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rpa -d rpa_platform"]
       interval: 5s
@@ -35,11 +39,17 @@ services:
     build:
       context: ..
       dockerfile: infra/api.Dockerfile
+    # Compose v2 reads .env from the directory of THIS file by default
+    # (infra/), but the project's .env lives at the workspace root. Point
+    # at it explicitly so SLACK_*, GITHUB_*, RPA_* etc. flow into the
+    # container. Service-specific overrides below stay authoritative.
+    env_file:
+      - ../.env
     environment:
+      # Override .env's localhost URL — inside the container we reach
+      # postgres at the service hostname `postgres`, not localhost.
       DATABASE_URL: postgres://rpa:rpa@postgres:5432/rpa_platform
-      PLATFORM_ENCRYPTION_KEY: ${PLATFORM_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
       ORCHESTRATOR_MCP_URL: http://mock-orchestrator-mcp:4000
-      ORCHESTRATOR_REST_BASE_URL: http://mock-orchestrator-mcp:4000
       API_PORT: 3000
       LOG_LEVEL: info
     depends_on:
@@ -52,10 +62,9 @@ services:
     build:
       context: ..
       dockerfile: infra/slack-bot.Dockerfile
+    env_file:
+      - ../.env
     environment:
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-xoxb-stub}
-      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-stub-signing-secret}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       API_BASE_URL: http://api:3000
       PORT: 3001
       LOG_LEVEL: info

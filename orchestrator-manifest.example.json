@@ -1,0 +1,88 @@
+{
+  "$schema": "./orchestrator-manifest.schema.json",
+  "project": "MyRPAProject",
+  "folderPath": "Finance/Invoicing",
+
+  "assets": [
+    {
+      "name": "Config_ApplicationUrl",
+      "type": "text",
+      "value": "https://app.example.com",
+      "description": "Base URL for the target application",
+      "perEnvironment": {
+        "dev": "https://dev.app.example.com",
+        "test": "https://test.app.example.com",
+        "stage": "https://stage.app.example.com",
+        "prod": "https://app.example.com"
+      }
+    },
+    {
+      "name": "Config_MaxRetries",
+      "type": "integer",
+      "value": 3,
+      "description": "Maximum number of retries for transient failures"
+    },
+    {
+      "name": "Config_EnableLogging",
+      "type": "bool",
+      "value": true
+    },
+    {
+      "name": "Config_AppCredential",
+      "type": "credential",
+      "description": "Application login credential — stored in UiPath Credential Store"
+    }
+  ],
+
+  "queues": [
+    {
+      "name": "InvoiceProcessingQueue",
+      "description": "Queue for invoice processing work items",
+      "maxRetries": 3,
+      "autoRetry": true,
+      "uniqueReference": true
+    },
+    {
+      "name": "ExceptionQueue",
+      "description": "Queue for business exceptions requiring human review"
+    }
+  ],
+
+  "buckets": [
+    {
+      "name": "InvoiceDocuments",
+      "description": "Storage for invoice PDF files"
+    },
+    {
+      "name": "ProcessingReports",
+      "description": "Storage for processing output reports"
+    }
+  ],
+
+  "packages": [
+    {
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+
+  "libraries": [
+    {
+      "path": "libraries/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+
+  "processes": [
+    {
+      "name": "Invoice Processing - Dispatcher",
+      "packageId": "InvoiceProcessing.Dispatcher",
+      "description": "Reads invoices and adds them to the processing queue"
+    },
+    {
+      "name": "Invoice Processing - Performer",
+      "packageId": "InvoiceProcessing.Performer",
+      "description": "Processes individual invoices from the queue"
+    }
+  ]
+}

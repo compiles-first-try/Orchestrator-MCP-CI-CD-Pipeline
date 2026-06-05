@@ -84,6 +84,42 @@ export class RestClient {
     await this.#requestWithRetry("POST", path, body, options);
   }
 
+  // For uploads (packages, libraries) that need raw binary body with a custom
+  // Content-Type (multipart/form-data). Unlike putRaw, this attaches OAuth
+  // headers because the upload goes to Orchestrator directly (not a signed URL).
+  async postBinary(
+    path: string,
+    body: Uint8Array,
+    contentType: string,
+    options: RequestOptions = {},
+  ): Promise<void> {
+    const url = this.#buildUrl(path, options.query);
+    const auth = await this.#tokenSource.getToken();
+    const headers: Record<string, string> = {
+      Authorization: `${auth.tokenType} ${auth.token}`,
+      "Content-Type": contentType,
+      ...folderHeaders(options.folder),
+      ...(options.headers ?? {}),
+    };
+
+    let response: Response;
+    try {
+      response = await this.#fetch(url, { method: "POST", headers, body });
+    } catch (cause) {
+      throw new OrchestratorTransportError(`POST ${path} (binary) failed at the network layer.`, {
+        cause,
+      });
+    }
+    if (!response.ok) {
+      const text = await safeText(response);
+      throw new OrchestratorRequestError(
+        response.status,
+        `POST ${path} (binary) returned ${response.status}: ${text}`,
+        { details: { path } },
+      );
+    }
+  }
+
   // Raw PUT against a fully-qualified URL with caller-supplied headers — used
   // for bucket file upload to the signed URL returned by GetWriteUri. No
   // OAuth header is attached because the signed URL embeds its own credentials.

@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Orchestrator Manifest",
+  "description": "Declares what resources this RPA project needs in UiPath Orchestrator. Place as orchestrator-manifest.json in your project root.",
+  "type": "object",
+  "required": ["project"],
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "Project name — used for logging and correlation."
+    },
+    "folderPath": {
+      "type": "string",
+      "description": "Orchestrator folder path (e.g. 'Finance/Invoicing'). Created automatically if it does not exist."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Assets to sync. Missing assets are created; changed assets are updated; assets not listed here are removed from Orchestrator.",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["text", "bool", "integer", "credential"] },
+          "value": { "description": "Value for text/bool/integer assets." },
+          "description": { "type": "string" },
+          "perEnvironment": {
+            "type": "object",
+            "description": "Per-tenant overrides. Keys are tenant names (dev/test/stage/prod).",
+            "additionalProperties": {}
+          }
+        }
+      }
+    },
+    "queues": {
+      "type": "array",
+      "description": "Queue definitions to ensure exist.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "maxRetries": { "type": "integer", "default": 0 },
+          "autoRetry": { "type": "boolean", "default": false },
+          "uniqueReference": { "type": "boolean", "default": false },
+          "encrypted": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "buckets": {
+      "type": "array",
+      "description": "Storage buckets to ensure exist.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "packages": {
+      "type": "array",
+      "description": "NuGet packages (.nupkg) to upload. Glob patterns are supported for the path field.",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path or glob pattern to the .nupkg file (e.g. 'output/*.nupkg')."
+          },
+          "autoVersion": {
+            "type": "boolean",
+            "default": true,
+            "description": "If true, automatically appends a -cicd.N suffix when the version already exists in Orchestrator."
+          }
+        }
+      }
+    },
+    "libraries": {
+      "type": "array",
+      "description": "Library packages (.nupkg) to upload to the tenant library feed.",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Relative path or glob pattern to the library .nupkg file."
+          },
+          "autoVersion": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "processes": {
+      "type": "array",
+      "description": "Process (Release) definitions to create or update in Orchestrator.",
+      "items": {
+        "type": "object",
+        "required": ["name", "packageId"],
+        "properties": {
+          "name": { "type": "string", "description": "Display name of the process." },
+          "packageId": { "type": "string", "description": "The NuGet package ID this process runs." },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

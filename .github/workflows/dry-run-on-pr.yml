@@ -1,0 +1,143 @@
+name: Orchestrator Dry-Run (PR Preview)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [test, stage, main]
+
+concurrency:
+  group: dry-run-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target tenant
+        id: tenant
+        shell: bash
+        run: |
+          case "${GITHUB_BASE_REF}" in
+            test)  echo "tenant=test" >> "$GITHUB_OUTPUT" ;;
+            stage) echo "tenant=stage" >> "$GITHUB_OUTPUT" ;;
+            main)  echo "tenant=prod" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::Unrecognised target branch: ${GITHUB_BASE_REF}"
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run dry-run deployment
+        id: dryrun
+        env:
+          TENANT: ${{ steps.tenant.outputs.tenant }}
+          DEPLOY_MODE: dry-run
+          ORCHESTRATOR_DEV_CLIENT_ID: ${{ secrets.ORCHESTRATOR_DEV_CLIENT_ID }}
+          ORCHESTRATOR_DEV_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_DEV_CLIENT_SECRET }}
+          ORCHESTRATOR_TEST_CLIENT_ID: ${{ secrets.ORCHESTRATOR_TEST_CLIENT_ID }}
+          ORCHESTRATOR_TEST_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_TEST_CLIENT_SECRET }}
+          ORCHESTRATOR_STAGE_CLIENT_ID: ${{ secrets.ORCHESTRATOR_STAGE_CLIENT_ID }}
+          ORCHESTRATOR_STAGE_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_STAGE_CLIENT_SECRET }}
+          ORCHESTRATOR_PROD_CLIENT_ID: ${{ secrets.ORCHESTRATOR_PROD_CLIENT_ID }}
+          ORCHESTRATOR_PROD_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_PROD_CLIENT_SECRET }}
+          ORCHESTRATOR_BASE_URL: ${{ vars.ORCHESTRATOR_BASE_URL }}
+          ORCHESTRATOR_IDENTITY_URL: ${{ vars.ORCHESTRATOR_IDENTITY_URL }}
+          ORCHESTRATOR_SCOPES: ${{ vars.ORCHESTRATOR_SCOPES }}
+        run: pnpm tsx scripts/deploy.ts
+
+      - name: Comment PR with dry-run results
+        if: always() && hashFiles('deployment-summary.json') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('deployment-summary.json', 'utf8'));
+            const tenant = '${{ steps.tenant.outputs.tenant }}';
+
+            let body = `## 🔍 Orchestrator Dry-Run Results\n\n`;
+            body += `**Target Tenant:** ${tenant}\n\n`;
+
+            if (summary.folders?.length > 0) {
+              body += `### Folders\n`;
+              for (const f of summary.folders) {
+                body += `- ${f.action}: \`${f.path}\`\n`;
+              }
+              body += '\n';
+            }
+
+            if (summary.assets) {
+              body += `### Assets\n`;
+              body += `- Create: ${summary.assets.creates || 0}\n`;
+              body += `- Update: ${summary.assets.updates || 0}\n`;
+              body += `- Delete: ${summary.assets.deletes || 0}\n`;
+              body += `- Unchanged: ${summary.assets.unchanged || 0}\n\n`;
+            }
+
+            if (summary.packages?.length > 0) {
+              body += `### Packages\n`;
+              for (const p of summary.packages) {
+                body += `- ${p.action}: \`${p.name}@${p.version}\`\n`;
+              }
+              body += '\n';
+            }
+
+            if (summary.queues) {
+              body += `### Queues\n`;
+              body += `- Create: ${summary.queues.creates || 0}\n`;
+              body += `- Unchanged: ${summary.queues.unchanged || 0}\n\n`;
+            }
+
+            if (summary.buckets) {
+              body += `### Buckets\n`;
+              body += `- Create: ${summary.buckets.creates || 0}\n`;
+              body += `- Unchanged: ${summary.buckets.unchanged || 0}\n\n`;
+            }
+
+            body += `\n---\n*This is an automated dry-run preview. Merge the PR to apply these changes.*`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user?.login === 'github-actions[bot]' &&
+              c.body?.includes('Orchestrator Dry-Run Results')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

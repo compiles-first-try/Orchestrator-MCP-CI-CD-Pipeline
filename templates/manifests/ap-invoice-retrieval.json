@@ -1,0 +1,67 @@
+{
+  "$schema": "../../orchestrator-manifest.schema.json",
+  "project": "AP Invoice Retrieval",
+  "folderPath": "Unattended Automations/FAD/Accounts Payable/AP Invoice Retrieval",
+
+  "assets": [
+    {
+      "name": "Config_APSystemUrl",
+      "type": "text",
+      "value": "https://ap.example.com",
+      "perEnvironment": {
+        "dev": "https://ap-dev.example.com",
+        "test": "https://ap-test.example.com",
+        "stage": "https://ap-stage.example.com",
+        "prod": "https://ap.example.com"
+      }
+    },
+    {
+      "name": "Config_MaxRetries",
+      "type": "integer",
+      "value": 3
+    },
+    {
+      "name": "Config_EmailNotificationRecipient",
+      "type": "text",
+      "value": "ap-team@example.com",
+      "description": "Email address for failure notifications"
+    },
+    {
+      "name": "AP_Credential",
+      "type": "credential",
+      "description": "AP system service account"
+    }
+  ],
+
+  "queues": [
+    {
+      "name": "AP_InvoiceRetrievalQueue",
+      "description": "Invoices to retrieve from AP system",
+      "maxRetries": 2,
+      "autoRetry": true,
+      "uniqueReference": true
+    }
+  ],
+
+  "buckets": [
+    {
+      "name": "AP_InvoiceDocuments",
+      "description": "Retrieved invoice documents"
+    }
+  ],
+
+  "packages": [
+    {
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+
+  "processes": [
+    {
+      "name": "AP Invoice Retrieval",
+      "packageId": "APInvoiceRetrieval",
+      "description": "Retrieves invoices from the AP system"
+    }
+  ]
+}

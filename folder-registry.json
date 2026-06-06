@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Complete Orchestrator folder hierarchy — same across all 4 tenants (Dev/Test/Stage/Prod). This file is the source of truth for folder paths used in orchestrator-manifest.json files.",
+  "lastUpdated": "2026-06-06",
+  "folders": {
+    "Apps": {
+      "FAD": {
+        "Cash Management": {}
+      }
+    },
+    "Attended Automations": {
+      "AA&D": {
+        "Arboretum Membership Registration": {},
+        "Contact Reporting": {},
+        "Guest Record Creation": {},
+        "Obituary Screening": {},
+        "Trust Administration": {}
+      },
+      "Campus Services": {
+        "CAPS": {},
+        "FoodPro Invoice Processing": {},
+        "Harvard International Office": {},
+        "Housing": {},
+        "Maximo Invoice Entry": {}
+      },
+      "FAD": {
+        "Accounts Payable": {
+          "AP Invoice Retrieval": {}
+        },
+        "Card Services": {},
+        "Cash Management": {},
+        "OC": {},
+        "TandE": {}
+      },
+      "HUIT": {
+        "ATS Client Services": {
+          "Termination Bots": {}
+        },
+        "HR": {},
+        "Student Information Systems": {},
+        "TPS": {}
+      }
+    },
+    "Shared": {},
+    "Unattended Automations": {
+      "AA&D": {
+        "Arboretum Membership Registration": {},
+        "Contact Reporting": {},
+        "Guest Record Creation": {},
+        "Obituary Screening": {},
+        "Trust Administration": {}
+      },
+      "Campus Services": {
+        "CAPS": {},
+        "FoodPro Invoice Processing": {},
+        "Harvard International Office": {},
+        "Housing": {},
+        "Maximo Invoice Entry": {}
+      },
+      "FAD": {
+        "Accounts Payable": {
+          "AP Invoice Retrieval": {}
+        },
+        "Card Services": {},
+        "Cash Management": {},
+        "OC": {},
+        "TandE": {}
+      },
+      "HUIT": {
+        "ATS Client Services": {
+          "Termination Bots": {}
+        },
+        "HR": {},
+        "Student Information Systems": {},
+        "TPS": {}
+      }
+    }
+  },
+  "folderPaths": [
+    "Apps/FAD/Cash Management",
+    "Attended Automations/AA&D/Arboretum Membership Registration",
+    "Attended Automations/AA&D/Contact Reporting",
+    "Attended Automations/AA&D/Guest Record Creation",
+    "Attended Automations/AA&D/Obituary Screening",
+    "Attended Automations/AA&D/Trust Administration",
+    "Attended Automations/Campus Services/CAPS",
+    "Attended Automations/Campus Services/FoodPro Invoice Processing",
+    "Attended Automations/Campus Services/Harvard International Office",
+    "Attended Automations/Campus Services/Housing",
+    "Attended Automations/Campus Services/Maximo Invoice Entry",
+    "Attended Automations/FAD/Accounts Payable/AP Invoice Retrieval",
+    "Attended Automations/FAD/Card Services",
+    "Attended Automations/FAD/Cash Management",
+    "Attended Automations/FAD/OC",
+    "Attended Automations/FAD/TandE",
+    "Attended Automations/HUIT/ATS Client Services/Termination Bots",
+    "Attended Automations/HUIT/HR",
+    "Attended Automations/HUIT/Student Information Systems",
+    "Attended Automations/HUIT/TPS",
+    "Shared",
+    "Unattended Automations/AA&D/Arboretum Membership Registration",
+    "Unattended Automations/AA&D/Contact Reporting",
+    "Unattended Automations/AA&D/Guest Record Creation",
+    "Unattended Automations/AA&D/Obituary Screening",
+    "Unattended Automations/AA&D/Trust Administration",
+    "Unattended Automations/Campus Services/CAPS",
+    "Unattended Automations/Campus Services/FoodPro Invoice Processing",
+    "Unattended Automations/Campus Services/Harvard International Office",
+    "Unattended Automations/Campus Services/Housing",
+    "Unattended Automations/Campus Services/Maximo Invoice Entry",
+    "Unattended Automations/FAD/Accounts Payable/AP Invoice Retrieval",
+    "Unattended Automations/FAD/Card Services",
+    "Unattended Automations/FAD/Cash Management",
+    "Unattended Automations/FAD/OC",
+    "Unattended Automations/FAD/TandE",
+    "Unattended Automations/HUIT/ATS Client Services/Termination Bots",
+    "Unattended Automations/HUIT/HR",
+    "Unattended Automations/HUIT/Student Information Systems",
+    "Unattended Automations/HUIT/TPS"
+  ]
+}

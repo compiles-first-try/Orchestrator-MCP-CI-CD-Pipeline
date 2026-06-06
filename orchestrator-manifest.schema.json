@@ -109,6 +109,57 @@
           "description": { "type": "string" }
         }
       }
+    },
+    "credentials": {
+      "type": "object",
+      "description": "(v2 placeholder) AWS Secrets Manager configuration for credential storage and expiration monitoring. Not yet implemented.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["manual", "aws_secrets_manager"],
+          "default": "manual",
+          "description": "Where credentials are stored. 'manual' = entered via platform UI. 'aws_secrets_manager' = fetched from AWS (v2)."
+        },
+        "awsRegion": { "type": "string", "description": "(v2) AWS region for Secrets Manager." },
+        "expirationAlerts": {
+          "type": "object",
+          "description": "(v2) Expiration alert configuration.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "alertAtDays": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "default": [30, 7],
+              "description": "Days before expiry to send alerts (default: 30 and 7)."
+            }
+          }
+        }
+      }
+    },
+    "jira": {
+      "type": "object",
+      "description": "(v2 placeholder) Jira integration for automated ticketing on commits and deployments. Not yet implemented.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "projectKey": { "type": "string", "description": "(v2) Jira project key (e.g. 'RPA')." },
+        "issueType": {
+          "type": "string",
+          "enum": ["Story", "Task", "Sub-task", "Bug"],
+          "default": "Task",
+          "description": "(v2) Default issue type for auto-created tickets."
+        },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "(v2) Labels to add to auto-created tickets."
+        },
+        "createOn": {
+          "type": "string",
+          "enum": ["commit", "pr", "deployment"],
+          "default": "deployment",
+          "description": "(v2) When to create tickets: per commit, per PR, or per deployment."
+        }
+      }
     }
   }
 }

@@ -63,7 +63,7 @@ const server = createServer(async (req, res) => {
         access_token: "mock-token-" + Date.now(),
         token_type: "Bearer",
         expires_in: 3600,
-        scope: "OR.Default OR.Assets OR.Queues OR.Storage OR.Users.Read",
+        scope: "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration",
       });
     }
 

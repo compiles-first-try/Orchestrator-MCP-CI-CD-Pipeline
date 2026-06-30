@@ -1,6 +1,9 @@
 import { AssetsClient } from "./assets.js";
 import { BucketFilesClient } from "./bucket-files.js";
 import { BucketsClient } from "./buckets.js";
+import { FoldersClient } from "./folders.js";
+import { LibrariesClient } from "./libraries.js";
+import { PackagesClient, ProcessesClient } from "./packages.js";
 import { QueuesClient } from "./queues.js";
 import { RestClient, type TokenSource } from "./rest-client.js";
 import { TokenManager } from "./token-manager.js";
@@ -26,6 +29,10 @@ export class OrchestratorClient {
   public readonly queues: QueuesClient;
   public readonly buckets: BucketsClient;
   public readonly bucketFiles: BucketFilesClient;
+  public readonly folders: FoldersClient;
+  public readonly packages: PackagesClient;
+  public readonly libraries: LibrariesClient;
+  public readonly processes: ProcessesClient;
   public readonly users: UsersClient;
   public readonly rest: RestClient;
   public readonly tokenSource: TokenSource;
@@ -47,6 +54,10 @@ export class OrchestratorClient {
     this.queues = new QueuesClient(this.rest);
     this.buckets = new BucketsClient(this.rest);
     this.bucketFiles = new BucketFilesClient(this.rest);
+    this.folders = new FoldersClient(this.rest);
+    this.packages = new PackagesClient(this.rest);
+    this.libraries = new LibrariesClient(this.rest);
+    this.processes = new ProcessesClient(this.rest);
     this.users = new UsersClient(this.rest);
   }
 }

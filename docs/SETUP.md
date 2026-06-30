@@ -239,9 +239,9 @@ In **Orchestrator → Manage Access → Manage Accounts and Groups → External 
 
 1. **Add Application → Confidential application**.
 2. **Add scopes** → Resource: **Orchestrator API** → tab **Application Scope(s)**.
-3. Tick at minimum: `OR.Assets`, `OR.Queues`, `OR.Folders.Read`, `OR.Users.Read`,
-   `OR.Roles.Read`, `OR.Administration` (or the granular `.Read`/`.Write` variants
-   your tenant exposes — exact scope strings vary by Cloud version).
+3. Tick at minimum: `OR.Assets`, `OR.Folders`, `OR.Queues`, `OR.Buckets`,
+   `OR.Execution`, `OR.Administration` — select both Read and Write for each
+   except Administration (Read only). Use the **Application Scopes** tab, not User Scopes.
 4. Save. Copy the **App ID**, **App Secret** (one-time reveal!), and the
    tenant's identity token URL: typically
    `https://cloud.uipath.com/{org}/identity_/connect/token`.

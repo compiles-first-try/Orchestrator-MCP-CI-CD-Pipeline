@@ -1,0 +1,78 @@
+{
+  "$schema": "../../orchestrator-manifest.schema.json",
+  "project": "FoodPro Invoice Processing",
+  "folderPath": "Unattended Automations/Campus Services/FoodPro Invoice Processing",
+
+  "assets": [
+    {
+      "name": "Config_FoodProUrl",
+      "type": "text",
+      "value": "https://foodpro.example.com",
+      "description": "FoodPro application URL",
+      "perEnvironment": {
+        "dev": "https://foodpro-dev.example.com",
+        "test": "https://foodpro-test.example.com",
+        "stage": "https://foodpro-stage.example.com",
+        "prod": "https://foodpro.example.com"
+      }
+    },
+    {
+      "name": "Config_MaxRetries",
+      "type": "integer",
+      "value": 3
+    },
+    {
+      "name": "Config_LogLevel",
+      "type": "text",
+      "value": "Info",
+      "perEnvironment": {
+        "dev": "Trace",
+        "test": "Debug",
+        "stage": "Info",
+        "prod": "Warning"
+      }
+    },
+    {
+      "name": "FoodPro_Credential",
+      "type": "credential",
+      "description": "FoodPro application login"
+    }
+  ],
+
+  "queues": [
+    {
+      "name": "FoodPro_InvoiceQueue",
+      "description": "Invoices to process from FoodPro",
+      "maxRetries": 3,
+      "autoRetry": true,
+      "uniqueReference": true
+    }
+  ],
+
+  "buckets": [
+    {
+      "name": "FoodPro_Documents",
+      "description": "Invoice PDFs and processing reports"
+    }
+  ],
+
+  "packages": [
+    {
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+
+  "processes": [
+    {
+      "name": "FoodPro Invoice Processing - Dispatcher",
+      "packageId": "FoodProInvoiceProcessing.Dispatcher",
+      "description": "Reads invoices and adds to processing queue"
+    },
+    {
+      "name": "FoodPro Invoice Processing - Performer",
+      "packageId": "FoodProInvoiceProcessing.Performer",
+      "description": "Processes individual invoices from queue"
+    }
+  ]
+}

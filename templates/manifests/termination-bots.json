@@ -1,0 +1,54 @@
+{
+  "$schema": "../../orchestrator-manifest.schema.json",
+  "project": "Termination Bots",
+  "folderPath": "Unattended Automations/HUIT/ATS Client Services/Termination Bots",
+
+  "assets": [
+    {
+      "name": "Config_ATSUrl",
+      "type": "text",
+      "value": "https://ats.example.com",
+      "perEnvironment": {
+        "dev": "https://ats-dev.example.com",
+        "test": "https://ats-test.example.com",
+        "stage": "https://ats-stage.example.com",
+        "prod": "https://ats.example.com"
+      }
+    },
+    {
+      "name": "Config_MaxRetries",
+      "type": "integer",
+      "value": 3
+    },
+    {
+      "name": "ATS_Credential",
+      "type": "credential",
+      "description": "ATS system service account"
+    }
+  ],
+
+  "queues": [
+    {
+      "name": "ATS_TerminationQueue",
+      "description": "Employee terminations to process",
+      "maxRetries": 2,
+      "autoRetry": true,
+      "uniqueReference": true
+    }
+  ],
+
+  "packages": [
+    {
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+
+  "processes": [
+    {
+      "name": "Termination Bots",
+      "packageId": "TerminationBots",
+      "description": "Processes employee terminations in ATS"
+    }
+  ]
+}

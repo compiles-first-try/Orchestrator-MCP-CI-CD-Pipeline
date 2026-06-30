@@ -1,0 +1,82 @@
+name: Deploy to UiPath Orchestrator
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    types: [closed]
+    branches: [test, stage, main]
+
+concurrency:
+  group: deploy-${{ github.base_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # For PRs, only run when the PR was actually merged (not just closed).
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target tenant
+        id: tenant
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" == "dev" ]]; then
+            echo "tenant=dev" >> "$GITHUB_OUTPUT"
+            echo "mode=apply" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            case "${GITHUB_BASE_REF}" in
+              test)  echo "tenant=test"  >> "$GITHUB_OUTPUT"; echo "mode=apply" >> "$GITHUB_OUTPUT" ;;
+              stage) echo "tenant=stage" >> "$GITHUB_OUTPUT"; echo "mode=apply" >> "$GITHUB_OUTPUT" ;;
+              main)  echo "tenant=prod"  >> "$GITHUB_OUTPUT"; echo "mode=apply" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::Unrecognised target branch: ${GITHUB_BASE_REF}"
+                exit 1
+                ;;
+            esac
+          else
+            echo "::error::Unexpected event context"
+            exit 1
+          fi
+          echo "::notice::Target tenant: $(grep tenant "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Deploy to Orchestrator
+        env:
+          TENANT: ${{ steps.tenant.outputs.tenant }}
+          DEPLOY_MODE: ${{ steps.tenant.outputs.mode }}
+          ORCHESTRATOR_DEV_CLIENT_ID: ${{ secrets.ORCHESTRATOR_DEV_CLIENT_ID }}
+          ORCHESTRATOR_DEV_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_DEV_CLIENT_SECRET }}
+          ORCHESTRATOR_TEST_CLIENT_ID: ${{ secrets.ORCHESTRATOR_TEST_CLIENT_ID }}
+          ORCHESTRATOR_TEST_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_TEST_CLIENT_SECRET }}
+          ORCHESTRATOR_STAGE_CLIENT_ID: ${{ secrets.ORCHESTRATOR_STAGE_CLIENT_ID }}
+          ORCHESTRATOR_STAGE_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_STAGE_CLIENT_SECRET }}
+          ORCHESTRATOR_PROD_CLIENT_ID: ${{ secrets.ORCHESTRATOR_PROD_CLIENT_ID }}
+          ORCHESTRATOR_PROD_CLIENT_SECRET: ${{ secrets.ORCHESTRATOR_PROD_CLIENT_SECRET }}
+          ORCHESTRATOR_BASE_URL: ${{ vars.ORCHESTRATOR_BASE_URL }}
+          ORCHESTRATOR_IDENTITY_URL: ${{ vars.ORCHESTRATOR_IDENTITY_URL }}
+          ORCHESTRATOR_SCOPES: ${{ vars.ORCHESTRATOR_SCOPES }}
+        run: npx tsx scripts/deploy.ts
+
+      - name: Post deployment summary
+        if: always()
+        run: |
+          if [[ -f deployment-summary.json ]]; then
+            echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Tenant:** ${{ steps.tenant.outputs.tenant }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Mode:** ${{ steps.tenant.outputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat deployment-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

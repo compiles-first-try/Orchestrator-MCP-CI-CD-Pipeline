@@ -82,7 +82,7 @@ const IDENTITY_URL =
   process.env["ORCHESTRATOR_IDENTITY_URL"] ??
   BASE_URL.replace(/\/orchestrator_?\/?$/u, "/identity_/connect/token");
 const SCOPES =
-  process.env["ORCHESTRATOR_SCOPES"] ?? "OR.Assets OR.Folders OR.Queues OR.Execution OR.Administration";
+  process.env["ORCHESTRATOR_SCOPES"] ?? "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration";
 
 function requiredEnv(name: string): string {
   const val = process.env[name];

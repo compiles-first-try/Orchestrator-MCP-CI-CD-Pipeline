@@ -177,13 +177,13 @@ In Orchestrator (your one tenant):
 2. **Manage Access → Manage Accounts and Groups → External Applications → Add Application**.
 3. **Application Type: Confidential application**. Name it `rpa-platform-local`.
 4. **Add scopes** → Resource: **Orchestrator API** → click the **Application Scope(s)** tab.
-5. Tick at least these (use the closest matches your tenant exposes):
-   - `OR.Assets` (or `.Read` + `.Write` if split)
-   - `OR.Queues`
-   - `OR.Folders.Read`
-   - `OR.Users.Read`
-   - `OR.Roles.Read`
-   - `OR.Administration` (if available)
+5. Under the **Application Scopes** tab (not User Scopes), tick:
+   - `OR.Assets` (Read + Write)
+   - `OR.Folders` (Read + Write)
+   - `OR.Queues` (Read + Write)
+   - `OR.Buckets` (Read + Write)
+   - `OR.Execution` (Read + Write)
+   - `OR.Administration` (Read)
 6. Save. Copy:
    - **App ID** → scratchpad as `UIPATH_CLIENT_ID`
    - **App Secret** (one-time reveal!) → scratchpad as `UIPATH_CLIENT_SECRET`

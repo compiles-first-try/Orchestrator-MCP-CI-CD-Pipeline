@@ -1,0 +1,48 @@
+{
+  "project": "Test_1",
+  "folderPath": "Unattended Automations/Test_1",
+  "assets": [
+    {
+      "name": "Test_1_Environment",
+      "type": "text",
+      "value": "Development",
+      "description": "Test 1 - text asset with perEnvironment overrides",
+      "perEnvironment": {
+        "dev": "Development",
+        "test": "Test",
+        "stage": "Staging",
+        "prod": "Production"
+      }
+    },
+    {
+      "name": "Test_1_MaxRetries",
+      "type": "integer",
+      "value": 3,
+      "description": "Test 1 - integer asset"
+    },
+    {
+      "name": "Test_1_IsEnabled",
+      "type": "bool",
+      "value": true,
+      "description": "Test 1 - boolean asset"
+    }
+  ],
+  "queues": [
+    {
+      "name": "Test_1_Queue",
+      "description": "Test 1 - queue with auto-retry and unique reference",
+      "maxRetries": 2,
+      "autoRetry": true,
+      "uniqueReference": true
+    }
+  ],
+  "buckets": [
+    {
+      "name": "Test_1_Bucket",
+      "description": "Test 1 - storage bucket"
+    }
+  ],
+  "packages": [],
+  "libraries": [],
+  "processes": []
+}

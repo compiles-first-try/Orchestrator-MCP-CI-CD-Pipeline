@@ -1,0 +1,88 @@
+{
+  "project": "FoodPro Invoice Processing",
+  "folderPath": "Unattended Automations/Campus Services/FoodPro Invoice Processing",
+  "assets": [
+    {
+      "name": "FoodPro_Environment",
+      "type": "text",
+      "value": "Development",
+      "description": "Current environment name — used for logging and conditional logic",
+      "perEnvironment": {
+        "dev": "Development",
+        "test": "Test",
+        "stage": "Staging",
+        "prod": "Production"
+      }
+    },
+    {
+      "name": "FoodPro_MaxRetries",
+      "type": "integer",
+      "value": 3,
+      "description": "Maximum retry attempts per transaction item before marking as failed"
+    },
+    {
+      "name": "FoodPro_IsEnabled",
+      "type": "bool",
+      "value": true,
+      "description": "Master switch — set to false to pause processing without unscheduling"
+    },
+    {
+      "name": "FoodPro_ApplicationUrl",
+      "type": "text",
+      "value": "https://dev-foodpro.dining.harvard.edu",
+      "description": "FoodPro application login URL",
+      "perEnvironment": {
+        "dev": "https://dev-foodpro.dining.harvard.edu",
+        "test": "https://test-foodpro.dining.harvard.edu",
+        "stage": "https://stage-foodpro.dining.harvard.edu",
+        "prod": "https://foodpro.dining.harvard.edu"
+      }
+    },
+    {
+      "name": "FoodPro_EmailRecipients",
+      "type": "text",
+      "value": "rpa-dev-notifications@harvard.edu",
+      "description": "Semicolon-separated email recipients for success/failure notifications",
+      "perEnvironment": {
+        "dev": "rpa-dev-notifications@harvard.edu",
+        "test": "rpa-test-notifications@harvard.edu",
+        "stage": "rpa-stage-notifications@harvard.edu",
+        "prod": "campus-services-rpa@harvard.edu;dining-ops@harvard.edu"
+      }
+    },
+    {
+      "name": "FoodPro_ServiceAccount",
+      "type": "credential",
+      "description": "Service account credentials for FoodPro login — set username/password in Orchestrator UI"
+    }
+  ],
+  "queues": [
+    {
+      "name": "FoodPro_Invoices",
+      "description": "Incoming FoodPro invoices to process (Dispatcher adds, Performer processes)",
+      "maxRetries": 2,
+      "autoRetry": true,
+      "uniqueReference": true
+    }
+  ],
+  "buckets": [
+    {
+      "name": "FoodPro_Output",
+      "description": "Processed invoice PDFs, reports, and exception screenshots"
+    }
+  ],
+  "packages": [
+    {
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+  "libraries": [],
+  "processes": [
+    {
+      "name": "FoodPro Invoice Processing",
+      "packageId": "FoodPro_Invoice_Processing",
+      "description": "Processes incoming FoodPro invoices via Harvard Unified REFramework"
+    }
+  ]
+}

@@ -304,14 +304,22 @@ async function parseConfig(configPath: string, tenant: string): Promise<ParsedCo
   let processes: ProcessEntry[] = [];
   const packagesPath = process.env["PACKAGES_JSON_PATH"] ?? "orchestrator-packages.json";
   if (fs.existsSync(packagesPath)) {
-    const raw = JSON.parse(fs.readFileSync(packagesPath, "utf-8")) as {
-      packages?: PackageEntry[];
-      libraries?: PackageEntry[];
-      processes?: ProcessEntry[];
-    };
-    packages = (raw.packages ?? []).filter((p) => p.path !== undefined || p.name !== undefined);
-    libraries = (raw.libraries ?? []).filter((p) => p.path !== undefined || p.name !== undefined);
-    processes = raw.processes ?? [];
+    let raw: { packages?: PackageEntry[]; libraries?: PackageEntry[]; processes?: ProcessEntry[] };
+    try {
+      raw = JSON.parse(fs.readFileSync(packagesPath, "utf-8")) as typeof raw;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to parse ${packagesPath}: ${detail}`);
+    }
+    packages = (raw.packages ?? []).filter((p) => p != null && (p.path !== undefined || p.name !== undefined));
+    libraries = (raw.libraries ?? []).filter((p) => p != null && (p.path !== undefined || p.name !== undefined));
+    // Drop malformed process entries (missing packageId/name) so undefined never
+    // reaches eqFilter — warn so the typo is visible rather than silently ignored.
+    processes = (raw.processes ?? []).filter((p) => {
+      const ok = p != null && typeof p.packageId === "string" && p.packageId !== "" && typeof p.name === "string";
+      if (!ok) console.warn(`[config] Skipping invalid process entry in ${packagesPath}: ${JSON.stringify(p)}`);
+      return ok;
+    });
   }
 
   return { meta, assets, queues, buckets, packages, libraries, processes };
@@ -832,6 +840,28 @@ async function syncBuckets(
 // Package / library upload
 // ============================================================================
 
+// Fetch the versions already in Orchestrator for a package/library id.
+// NOTE: GetPackageVersions is an OData *function* — its argument goes INLINE in
+// parentheses, not via $filter (a $filter call returns HTTP 400).
+async function fetchExistingVersions(
+  ctx: ApiContext,
+  kind: "package" | "library",
+  id: string,
+): Promise<string[]> {
+  if (kind === "package") {
+    const encId = id.replace(/'/gu, "''");
+    const versions = await odataList<PackageVersionEntity>(
+      ctx,
+      `/odata/Processes/UiPath.Server.Configuration.OData.GetPackageVersions(packageId='${encId}')`,
+    );
+    return versions.map((v) => v.Version);
+  }
+  const existing = await odataList<PackageVersionEntity>(ctx, "/odata/Libraries", {
+    $filter: eqFilter("Id", id),
+  });
+  return existing.map((v) => v.Version);
+}
+
 async function uploadPackages(
   ctx: ApiContext,
   entries: PackageEntry[],
@@ -841,10 +871,6 @@ async function uploadPackages(
   const results: Array<{ name: string; version: string; action: string }> = [];
   // Libraries are tenant-scoped (no folder header).
   const uploadCtx = kind === "library" ? { ...ctx, folderId: undefined } : ctx;
-  const listPath =
-    kind === "library"
-      ? "/odata/Libraries"
-      : "/odata/Processes/UiPath.Server.Configuration.OData.GetPackageVersions";
   const uploadPath =
     kind === "library"
       ? "/odata/Libraries/UiPath.Server.Configuration.OData.UploadPackage"
@@ -864,10 +890,7 @@ async function uploadPackages(
         continue;
       }
 
-      const existing = await odataList<PackageVersionEntity>(uploadCtx, listPath, {
-        $filter: eqFilter("Id", meta.id),
-      });
-      const versionList = existing.map((v) => v.Version);
+      const versionList = await fetchExistingVersions(uploadCtx, kind, meta.id);
 
       let targetVersion = meta.version;
       let action = "upload";
@@ -995,9 +1018,10 @@ async function main(): Promise<void> {
   const mode = process.env["DEPLOY_MODE"] ?? "apply";
   const prune = (process.env["PRUNE_ASSETS"] ?? "false").toLowerCase() === "true";
   const baseUrl = requiredEnv("ORCHESTRATOR_BASE_URL");
+  // Identity lives at the host root (https://cloud.uipath.com/identity_/connect/token),
+  // NOT under /{org}/{tenant}/. Derive from the origin, not by string-replacing the path.
   const identityUrl =
-    process.env["ORCHESTRATOR_IDENTITY_URL"] ??
-    baseUrl.replace(/\/orchestrator_?\/?$/u, "/identity_/connect/token");
+    process.env["ORCHESTRATOR_IDENTITY_URL"] ?? `${new URL(baseUrl).origin}/identity_/connect/token`;
   const scopes =
     process.env["ORCHESTRATOR_SCOPES"] ??
     "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration";
@@ -1039,6 +1063,18 @@ async function main(): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Folder step failed: ${msg}`);
       summary.errors.push({ step: "folders", message: msg });
+    }
+
+    // SAFETY: if a folder was configured but we couldn't resolve its Id, ABORT.
+    // Otherwise every folder-scoped write below would fall back to the tenant
+    // default scope — creating assets in the wrong place, or (with PRUNE_ASSETS)
+    // deleting unrelated assets. Never run folder-scoped mutations unscoped.
+    if (mode === "apply" && ctx.folderId === undefined) {
+      const msg = `Folder "${config.meta.folderPath}" could not be resolved; aborting before any folder-scoped writes.`;
+      console.error(`[deploy] ${msg}`);
+      summary.errors.push({ step: "folders", message: msg });
+      fs.writeFileSync("deployment-summary.json", JSON.stringify(summary, null, 2));
+      process.exit(1);
     }
   }
 

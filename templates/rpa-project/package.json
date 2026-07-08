@@ -6,7 +6,8 @@
   "scripts": {
     "deploy": "tsx scripts/deploy.ts",
     "validate": "tsx scripts/deploy.ts --validate",
-    "make-config": "tsx scripts/make-config-xlsx.ts"
+    "make-config": "tsx scripts/make-config-xlsx.ts",
+    "upgrade-config": "tsx scripts/add-pipeline-tabs.ts"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

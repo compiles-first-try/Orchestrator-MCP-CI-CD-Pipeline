@@ -250,14 +250,51 @@ be authoritative and prune extras, set `PRUNE_ASSETS=true` in the workflow env
 
 ---
 
-## Regenerating the sample
+## Two ways to get a Config.xlsx
 
-The committed `Data/Config.xlsx` is a starting point. To regenerate it from scratch:
+There are two scripts, for two situations:
+
+| Situation | Script | What it does |
+|-----------|--------|--------------|
+| **Brand-new project** (no `Config.xlsx` yet) | `npm run make-config` | Writes a fresh `Data/Config.xlsx` with all 10 tabs + sample data. **Overwrites** any existing file. |
+| **Existing project / the dev template** (already has a real `Config.xlsx`) | `npm run upgrade-config` | **Adds** the pipeline tabs to your existing file and leaves Settings/Constants/Assets untouched. |
+
+### Upgrading an existing Config.xlsx (the dev rollout)
+
+Your devs already have `Config.xlsx` files full of real Settings/Constants/Assets.
+To move them to the new format **without touching their existing content**, run the
+upgrade script — it only adds the missing pipeline tabs:
 
 ```bash
 npm install
-npm run make-config      # writes Data/Config.xlsx
+npm run upgrade-config                 # upgrades Data/Config.xlsx in place
+# or a specific file:
+npx tsx scripts/add-pipeline-tabs.ts path/to/Config.xlsx
 ```
 
-Then edit it in Excel for your automation. Re-running **overwrites** the file, so
-don't run it over a spreadsheet you've already customized.
+What it does:
+
+- Adds `Pipeline`, `Dev/Test/Stage/Prod Assets`, `Queues`, `Buckets` **only if they
+  don't already exist** (idempotent — safe to re-run).
+- Leaves `Settings`, `Constants`, `Assets`, and any other existing tab exactly as-is.
+- The new per-tenant asset tabs start **empty** (headers only) so you never deploy
+  placeholder assets by accident; the `Pipeline` tab is seeded with the three keys
+  (`ProjectName`, `RepoName`, `FolderPath`) with blank values to fill in.
+- Backs up the original to `Config.xlsx.bak` before writing.
+
+**After upgrading:** open the file, set `FolderPath` on the Pipeline tab, and fill in
+the per-tenant asset rows. Then `TENANT=dev npx tsx scripts/deploy.ts --validate` to
+check it. Because exceljs rewrites the whole workbook, give the Settings/Constants/Assets
+tabs a quick visual once-over the first time you run it.
+
+**Rolling it out to the template:** run `upgrade-config` against the
+`RPA_HarvardUnifiedFrameworkTemplate` repo's `Data/Config.xlsx`, commit it, and every
+new project scaffolded from the template inherits the pipeline tabs.
+
+### Regenerating the sample from scratch
+
+```bash
+npm run make-config      # writes a fresh Data/Config.xlsx (overwrites!)
+```
+
+Only use this for a new project or to see a fully-worked example — it overwrites.

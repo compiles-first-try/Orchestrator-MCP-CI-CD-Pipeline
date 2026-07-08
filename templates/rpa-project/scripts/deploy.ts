@@ -157,6 +157,11 @@ function cellToScalar(value: ExcelJS.CellValue): Scalar {
       const result = obj["result"];
       if (result === null || result === undefined) return null;
       if (result instanceof Date) return result.toISOString();
+      // A cached formula result can itself be an error object, e.g. {error:'#DIV/0!'}.
+      if (typeof result === "object") {
+        const rObj = result as Record<string, unknown>;
+        return "error" in rObj ? String(rObj["error"]) : null;
+      }
       return result as Scalar;
     }
   }
@@ -259,13 +264,19 @@ async function parseConfig(configPath: string, tenant: string): Promise<ParsedCo
     for (const record of sheetToRecords(assetSheet)) {
       const name = str(record, "Name");
       if (name === undefined) continue;
-      const type = parseAssetType(str(record, "Type"));
-      assets.push({
-        name,
-        type,
-        value: record.get(normalizeToken("Value")) ?? null,
-        description: str(record, "Description"),
-      });
+      let type: AssetType;
+      try {
+        type = parseAssetType(str(record, "Type"));
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`Asset "${name}" in the "${tenant} Assets" tab: ${detail}`);
+      }
+      const value = record.get(normalizeToken("Value")) ?? null;
+      // Surface silent coercions so a mistyped value isn't deployed as 0/false.
+      if (type === "integer" && typeof value === "string" && value.trim() !== "" && Number.isNaN(Number(value))) {
+        console.warn(`[config] Asset "${name}" (integer) has non-numeric value "${value}"; it will deploy as 0.`);
+      }
+      assets.push({ name, type, value, description: str(record, "Description") });
     }
   }
 
@@ -570,6 +581,20 @@ function credEnvKey(assetName: string): string {
   return assetName.toUpperCase().replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
 }
 
+// Derive the OAuth token endpoint from the Orchestrator base URL.
+//   Cloud:       https://cloud.uipath.com/{org}/{tenant}/orchestrator_
+//                -> https://cloud.uipath.com/{org}/identity_/connect/token   (keep org, drop tenant)
+//   Self-hosted: {origin}/identity/connect/token  (no org, no trailing underscore)
+// Always overridable via ORCHESTRATOR_IDENTITY_URL.
+function deriveIdentityUrl(baseUrl: string): string {
+  const u = new URL(baseUrl);
+  if (u.hostname === "cloud.uipath.com") {
+    const org = u.pathname.split("/").filter(Boolean)[0];
+    if (org !== undefined) return `${u.origin}/${org}/identity_/connect/token`;
+  }
+  return `${u.origin}/identity/connect/token`;
+}
+
 // ============================================================================
 // Folder operations (tenant-scoped — no folder header)
 // ============================================================================
@@ -722,6 +747,21 @@ async function syncAssets(
       ...assetValueFields(asset),
     };
 
+    // If the asset already exists with a different ValueType, an UPDATE that
+    // strips ValueType would send the wrong value field (e.g. IntValue onto a
+    // Text asset). Orchestrator won't retype an asset via PATCH, so skip and warn.
+    if (existing !== undefined) {
+      const existingType = (existing as Record<string, unknown>)["ValueType"];
+      if (typeof existingType === "string" && existingType !== valueTypeFor(asset.type)) {
+        console.warn(
+          `  [asset] SKIP ${asset.name}: type in sheet (${valueTypeFor(asset.type)}) differs from ` +
+            `Orchestrator (${existingType}). Change the asset's type manually; not auto-updating.`,
+        );
+        skipped++;
+        continue;
+      }
+    }
+
     if (existing === undefined) {
       if (mode === "apply") {
         console.log(`  [asset] CREATE: ${asset.name}`);
@@ -848,18 +888,17 @@ async function fetchExistingVersions(
   kind: "package" | "library",
   id: string,
 ): Promise<string[]> {
-  if (kind === "package") {
-    const encId = id.replace(/'/gu, "''");
-    const versions = await odataList<PackageVersionEntity>(
-      ctx,
-      `/odata/Processes/UiPath.Server.Configuration.OData.GetPackageVersions(packageId='${encId}')`,
-    );
-    return versions.map((v) => v.Version);
-  }
-  const existing = await odataList<PackageVersionEntity>(ctx, "/odata/Libraries", {
-    $filter: eqFilter("Id", id),
-  });
-  return existing.map((v) => v.Version);
+  // Two distinct bound functions with different names AND parameter names:
+  //   packages : GetProcessVersions(processId='...')   (on /odata/Processes)
+  //   libraries: GetVersions(packageId='...')          (on /odata/Libraries)
+  // The argument goes INLINE in parentheses — a $filter call 404s/400s.
+  const encId = id.replace(/'/gu, "''");
+  const fnPath =
+    kind === "package"
+      ? `/odata/Processes/UiPath.Server.Configuration.OData.GetProcessVersions(processId='${encId}')`
+      : `/odata/Libraries/UiPath.Server.Configuration.OData.GetVersions(packageId='${encId}')`;
+  const versions = await odataList<PackageVersionEntity>(ctx, fnPath);
+  return versions.map((v) => v.Version);
 }
 
 async function uploadPackages(
@@ -1018,10 +1057,7 @@ async function main(): Promise<void> {
   const mode = process.env["DEPLOY_MODE"] ?? "apply";
   const prune = (process.env["PRUNE_ASSETS"] ?? "false").toLowerCase() === "true";
   const baseUrl = requiredEnv("ORCHESTRATOR_BASE_URL");
-  // Identity lives at the host root (https://cloud.uipath.com/identity_/connect/token),
-  // NOT under /{org}/{tenant}/. Derive from the origin, not by string-replacing the path.
-  const identityUrl =
-    process.env["ORCHESTRATOR_IDENTITY_URL"] ?? `${new URL(baseUrl).origin}/identity_/connect/token`;
+  const identityUrl = process.env["ORCHESTRATOR_IDENTITY_URL"] ?? deriveIdentityUrl(baseUrl);
   const scopes =
     process.env["ORCHESTRATOR_SCOPES"] ??
     "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration";
@@ -1041,6 +1077,19 @@ async function main(): Promise<void> {
     folderPath: config.meta.folderPath,
     errors: [],
   };
+
+  // Assets, queues, buckets, and processes are folder-scoped — they REQUIRE a
+  // folder header. Without a FolderPath they'd be POSTed unscoped and 400. Fail fast.
+  const folderScopedCount =
+    config.assets.length + config.queues.length + config.buckets.length + config.processes.length;
+  if (folderScopedCount > 0 && config.meta.folderPath === undefined) {
+    const msg =
+      "Assets/queues/buckets/processes require a folder. Set FolderPath on the Pipeline tab of Config.xlsx.";
+    console.error(`[deploy] ${msg}`);
+    summary.errors.push({ step: "config", message: msg });
+    fs.writeFileSync("deployment-summary.json", JSON.stringify(summary, null, 2));
+    process.exit(1);
+  }
 
   // Step 1: ensure folder
   if (config.meta.folderPath !== undefined) {
@@ -1078,8 +1127,20 @@ async function main(): Promise<void> {
     }
   }
 
+  // In dry-run, the folder may not exist yet (nothing has created it). Without a
+  // folder Id we can't scope the folder-scoped diffs, so skip them rather than
+  // report bogus WOULD-CREATE/PRUNE against the tenant default scope.
+  const folderReady = config.meta.folderPath === undefined || ctx.folderId !== undefined;
+  if (!folderReady) {
+    console.log(
+      `[deploy] Folder "${config.meta.folderPath}" does not exist yet — skipping the folder-scoped diff. ` +
+        `In a real run it would be created, then ${config.assets.length} asset(s), ${config.queues.length} queue(s), ` +
+        `${config.buckets.length} bucket(s), and ${config.processes.length} process(es) created inside it.`,
+    );
+  }
+
   // Step 2: assets
-  if (config.assets.length > 0) {
+  if (folderReady && config.assets.length > 0) {
     console.log(`[deploy] Syncing ${config.assets.length} assets...`);
     try {
       summary.assets = await syncAssets(ctx, config.assets, mode, prune);
@@ -1091,7 +1152,7 @@ async function main(): Promise<void> {
   }
 
   // Step 3: queues
-  if (config.queues.length > 0) {
+  if (folderReady && config.queues.length > 0) {
     console.log(`[deploy] Syncing ${config.queues.length} queues...`);
     try {
       summary.queues = await syncQueues(ctx, config.queues, mode);
@@ -1103,7 +1164,7 @@ async function main(): Promise<void> {
   }
 
   // Step 4: buckets
-  if (config.buckets.length > 0) {
+  if (folderReady && config.buckets.length > 0) {
     console.log(`[deploy] Syncing ${config.buckets.length} buckets...`);
     try {
       summary.buckets = await syncBuckets(ctx, config.buckets, mode);
@@ -1138,8 +1199,8 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 7: processes
-  if (config.processes.length > 0) {
+  // Step 7: processes (folder-scoped)
+  if (folderReady && config.processes.length > 0) {
     console.log(`[deploy] Syncing ${config.processes.length} processes...`);
     try {
       summary.processes = await syncProcesses(ctx, config.processes, mode);

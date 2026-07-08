@@ -1,0 +1,18 @@
+{
+  "$comment": "Companion to Data/Config.xlsx. Holds the ONE thing that does not belong in a config spreadsheet: nuget packages and libraries. Folders, per-tenant assets, queues, and buckets all live in Data/Config.xlsx.",
+  "packages": [
+    {
+      "$comment": "Glob path (relative to repo root) to your published process .nupkg. UiPath Studio Publish writes it; the version is read from the filename. autoVersion bumps to -cicd.N if that version already exists in Orchestrator.",
+      "path": "output/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+  "libraries": [
+    {
+      "$comment": "Shared library .nupkg files. Libraries are tenant-scoped (available to every folder). Leave the array empty if this project has no libraries to publish.",
+      "path": "libraries/*.nupkg",
+      "autoVersion": true
+    }
+  ],
+  "processes": []
+}

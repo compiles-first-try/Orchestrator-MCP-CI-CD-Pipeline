@@ -1,0 +1,16 @@
+# Node dependencies for the CI/CD deploy tooling — installed fresh in the pipeline.
+node_modules/
+
+# Output written by the deploy script.
+deployment-summary.json
+
+# UiPath build output (published packages/libraries live in the pipeline, not Git).
+output/
+*.nupkg
+
+# Local Excel round-trip exports — never commit these.
+*-config.xlsx
+
+# OS / editor noise.
+.DS_Store
+Thumbs.db

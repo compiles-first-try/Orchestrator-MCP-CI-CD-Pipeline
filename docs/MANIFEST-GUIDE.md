@@ -1,3 +1,8 @@
+> ⚠️ **SUPERSEDED.** The pipeline no longer uses `orchestrator-manifest.json`.
+> The single source of truth is now **`Data/Config.xlsx`** plus
+> `orchestrator-packages.json`. See **[CONFIG-XLSX-GUIDE.md](./CONFIG-XLSX-GUIDE.md)**.
+> This document is kept only for historical reference.
+
 # How to Configure `orchestrator-manifest.json`
 
 This guide walks you through every field in `orchestrator-manifest.json` — the file that tells the CI/CD pipeline what to create in UiPath Orchestrator when you push code.

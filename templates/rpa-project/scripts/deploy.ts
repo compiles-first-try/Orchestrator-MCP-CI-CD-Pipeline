@@ -1,62 +1,94 @@
 #!/usr/bin/env npx tsx
 //
-// Self-contained UiPath Orchestrator deployment script.
-// Zero monorepo dependencies — only needs Node.js 20+ and `npx tsx` to run.
+// UiPath Orchestrator deployment script.
 //
-// Reads orchestrator-manifest.json from the project root and syncs resources
-// (folders, assets, queues, buckets, packages, libraries, processes) to the
-// target Orchestrator tenant via REST/OData + OAuth2 client_credentials.
+// Reads Data/Config.xlsx (the single source of truth) plus orchestrator-packages.json,
+// and provisions the target Orchestrator tenant via REST/OData + OAuth2 client_credentials.
+//
+// Config.xlsx tabs the pipeline reads (the robot ignores these; it only reads
+// Settings/Constants/Assets):
+//   - Pipeline        : Key | Value            (FolderPath, RepoName, ProjectName)
+//   - <Tenant> Assets : Name | Type | Value | Description  (one tab per tenant)
+//   - Queues          : Name | Description | MaxRetries | AutoRetry | UniqueReference | Encrypted
+//   - Buckets         : Name | Description
+//
+// orchestrator-packages.json holds nuget packages + libraries.
+//
+// Run modes:
+//   npx tsx scripts/deploy.ts --validate            # parse + print only, NO network calls
+//   DEPLOY_MODE=dry-run npx tsx scripts/deploy.ts   # read Orchestrator, report diffs, write nothing
+//   npx tsx scripts/deploy.ts                       # apply (default)
+//
+// Safety: assets are ADDITIVE by default (create + update only). Orchestrator
+// folders are often shared across projects, so we never delete assets unless
+// you explicitly opt in with PRUNE_ASSETS=true.
+//
+// Credentials: credential-type assets NEVER take their secret from the spreadsheet.
+// The pipeline reads CRED_<ASSETNAME>_USERNAME / CRED_<ASSETNAME>_PASSWORD from the
+// environment (wire these to GitHub Secrets). If the password env var is absent,
+// the credential asset is skipped with a warning.
 //
 
+import ExcelJS from "exceljs";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface ManifestAsset {
-  name: string;
-  type: "text" | "bool" | "integer" | "credential";
-  value?: string | boolean | number;
-  description?: string;
-  perEnvironment?: Record<string, unknown>;
-}
+type AssetType = "text" | "bool" | "integer" | "credential";
 
-interface ManifestQueue {
+interface DesiredAsset {
   name: string;
-  description?: string;
-  maxRetries?: number;
-  autoRetry?: boolean;
-  uniqueReference?: boolean;
-  encrypted?: boolean;
-}
-
-interface ManifestBucket {
-  name: string;
+  type: AssetType;
+  value: string | number | boolean | null;
   description?: string;
 }
 
-interface ManifestPackage {
-  path: string;
+interface DesiredQueue {
+  name: string;
+  description?: string;
+  maxRetries: number;
+  autoRetry: boolean;
+  uniqueReference: boolean;
+  encrypted: boolean;
+}
+
+interface DesiredBucket {
+  name: string;
+  description?: string;
+}
+
+interface PackageEntry {
+  path?: string;
+  name?: string;
+  version?: string;
   autoVersion?: boolean;
 }
 
-interface ManifestProcess {
+interface ProcessEntry {
   name: string;
   packageId: string;
+  version?: string;
   description?: string;
 }
 
-interface Manifest {
-  project: string;
+interface PipelineMeta {
+  projectName?: string;
+  repoName?: string;
   folderPath?: string;
-  assets?: ManifestAsset[];
-  queues?: ManifestQueue[];
-  buckets?: ManifestBucket[];
-  packages?: ManifestPackage[];
-  libraries?: ManifestPackage[];
-  processes?: ManifestProcess[];
+}
+
+interface ParsedConfig {
+  meta: PipelineMeta;
+  assets: DesiredAsset[];
+  queues: DesiredQueue[];
+  buckets: DesiredBucket[];
+  packages: PackageEntry[];
+  libraries: PackageEntry[];
+  processes: ProcessEntry[];
 }
 
 interface ODataEntity {
@@ -78,7 +110,7 @@ interface PackageVersionEntity {
   [key: string]: unknown;
 }
 
-interface ProcessEntity {
+interface ProcessReleaseEntity {
   Id: number;
   ProcessKey?: string;
   Name?: string;
@@ -88,9 +120,11 @@ interface ProcessEntity {
 interface DeploySummary {
   tenant: string;
   mode: string;
-  project: string;
-  folders?: Array<{ path: string; action: string }>;
-  assets?: { creates: number; updates: number; deletes: number; unchanged: number };
+  project?: string;
+  repo?: string;
+  folderPath?: string;
+  folder?: { path: string; action: string };
+  assets?: { creates: number; updates: number; skipped: number; unchanged: number; pruned: number };
   queues?: { creates: number; unchanged: number };
   buckets?: { creates: number; unchanged: number };
   packages?: Array<{ name: string; version: string; action: string }>;
@@ -99,13 +133,202 @@ interface DeploySummary {
   errors: Array<{ step: string; message: string }>;
 }
 
+type Scalar = string | number | boolean | null;
+
+// ============================================================================
+// Excel parsing
+// ============================================================================
+
+/** Flatten any ExcelJS cell value to a plain scalar. */
+function cellToScalar(value: ExcelJS.CellValue): Scalar {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (value instanceof Date) return value.toISOString();
+
+  if (typeof value === "object") {
+    const obj = value as unknown as Record<string, unknown>;
+    if ("error" in obj) return String(obj["error"]);
+    if ("richText" in obj && Array.isArray(obj["richText"])) {
+      return (obj["richText"] as Array<{ text?: string }>).map((r) => r.text ?? "").join("");
+    }
+    if ("hyperlink" in obj) return String(obj["text"] ?? obj["hyperlink"] ?? "");
+    if ("formula" in obj || "sharedFormula" in obj) {
+      const result = obj["result"];
+      if (result === null || result === undefined) return null;
+      if (result instanceof Date) return result.toISOString();
+      return result as Scalar;
+    }
+  }
+  return null;
+}
+
+/** Normalize a sheet/header/tenant token: lowercase, strip everything but a–z0–9. */
+function normalizeToken(s: string): string {
+  return s.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "");
+}
+
+function getWorksheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet | undefined {
+  const target = normalizeToken(name);
+  return workbook.worksheets.find((ws) => normalizeToken(ws.name) === target);
+}
+
+/** Read a sheet into rows of Map<normalizedHeader, Scalar>. Skips fully-empty rows. */
+function sheetToRecords(sheet: ExcelJS.Worksheet): Array<Map<string, Scalar>> {
+  const headerRow = sheet.getRow(1);
+  const headers = new Map<number, string>(); // colNumber -> normalized header
+  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    const key = normalizeToken(String(cellToScalar(cell.value) ?? ""));
+    if (key !== "") headers.set(colNumber, key);
+  });
+
+  const records: Array<Map<string, Scalar>> = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const record = new Map<string, Scalar>();
+    let hasAny = false;
+    for (const [colNumber, header] of headers) {
+      const scalar = cellToScalar(row.getCell(colNumber).value);
+      if (scalar !== null && String(scalar).trim() !== "") hasAny = true;
+      record.set(header, scalar);
+    }
+    if (hasAny) records.push(record);
+  });
+  return records;
+}
+
+function str(record: Map<string, Scalar>, key: string): string | undefined {
+  const v = record.get(normalizeToken(key));
+  if (v === null || v === undefined) return undefined;
+  const s = String(v).trim();
+  return s === "" ? undefined : s;
+}
+
+function toBool(v: Scalar): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") return ["true", "yes", "y", "1"].includes(v.trim().toLowerCase());
+  return false;
+}
+
+function toInt(v: Scalar, fallback: number): number {
+  if (typeof v === "number") return Math.trunc(v);
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (!Number.isNaN(n)) return Math.trunc(n);
+  }
+  return fallback;
+}
+
+function parseAssetType(raw: string | undefined): AssetType {
+  const t = (raw ?? "text").trim().toLowerCase();
+  if (t === "text" || t === "string") return "text";
+  if (t === "integer" || t === "int" || t === "number") return "integer";
+  if (t === "bool" || t === "boolean" || t === "flag") return "bool";
+  if (t === "credential" || t === "cred") return "credential";
+  throw new Error(`Unknown asset type "${raw}". Use: text | integer | bool | credential.`);
+}
+
+async function parseConfig(configPath: string, tenant: string): Promise<ParsedConfig> {
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`Config file not found: ${configPath} (set CONFIG_XLSX_PATH to override).`);
+  }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(configPath);
+
+  // --- Pipeline metadata ---
+  const meta: PipelineMeta = {};
+  const pipelineSheet = getWorksheet(workbook, "Pipeline");
+  if (pipelineSheet !== undefined) {
+    for (const record of sheetToRecords(pipelineSheet)) {
+      const key = str(record, "Key");
+      const value = str(record, "Value");
+      if (key === undefined) continue;
+      const nk = normalizeToken(key);
+      if (nk === "folderpath") meta.folderPath = value;
+      else if (nk === "reponame") meta.repoName = value;
+      else if (nk === "projectname") meta.projectName = value;
+    }
+  }
+
+  // --- Per-tenant assets ---
+  const assetSheet = getWorksheet(workbook, `${tenant} Assets`);
+  const assets: DesiredAsset[] = [];
+  if (assetSheet !== undefined) {
+    for (const record of sheetToRecords(assetSheet)) {
+      const name = str(record, "Name");
+      if (name === undefined) continue;
+      const type = parseAssetType(str(record, "Type"));
+      assets.push({
+        name,
+        type,
+        value: record.get(normalizeToken("Value")) ?? null,
+        description: str(record, "Description"),
+      });
+    }
+  }
+
+  // --- Queues ---
+  const queues: DesiredQueue[] = [];
+  const queueSheet = getWorksheet(workbook, "Queues");
+  if (queueSheet !== undefined) {
+    for (const record of sheetToRecords(queueSheet)) {
+      const name = str(record, "Name");
+      if (name === undefined) continue;
+      queues.push({
+        name,
+        description: str(record, "Description"),
+        maxRetries: toInt(record.get(normalizeToken("MaxRetries")) ?? null, 0),
+        autoRetry: toBool(record.get(normalizeToken("AutoRetry")) ?? null),
+        uniqueReference: toBool(record.get(normalizeToken("UniqueReference")) ?? null),
+        encrypted: toBool(record.get(normalizeToken("Encrypted")) ?? null),
+      });
+    }
+  }
+
+  // --- Buckets ---
+  const buckets: DesiredBucket[] = [];
+  const bucketSheet = getWorksheet(workbook, "Buckets");
+  if (bucketSheet !== undefined) {
+    for (const record of sheetToRecords(bucketSheet)) {
+      const name = str(record, "Name");
+      if (name === undefined) continue;
+      buckets.push({ name, description: str(record, "Description") });
+    }
+  }
+
+  // --- Packages / libraries / processes (companion JSON) ---
+  let packages: PackageEntry[] = [];
+  let libraries: PackageEntry[] = [];
+  let processes: ProcessEntry[] = [];
+  const packagesPath = process.env["PACKAGES_JSON_PATH"] ?? "orchestrator-packages.json";
+  if (fs.existsSync(packagesPath)) {
+    const raw = JSON.parse(fs.readFileSync(packagesPath, "utf-8")) as {
+      packages?: PackageEntry[];
+      libraries?: PackageEntry[];
+      processes?: ProcessEntry[];
+    };
+    packages = (raw.packages ?? []).filter((p) => p.path !== undefined || p.name !== undefined);
+    libraries = (raw.libraries ?? []).filter((p) => p.path !== undefined || p.name !== undefined);
+    processes = raw.processes ?? [];
+  }
+
+  return { meta, assets, queues, buckets, packages, libraries, processes };
+}
+
 // ============================================================================
 // OAuth2 Token Manager
 // ============================================================================
 
 let cachedToken: { token: string; expiresAt: number } | undefined;
 
-async function getToken(identityUrl: string, clientId: string, clientSecret: string, scopes: string): Promise<string> {
+async function getToken(
+  identityUrl: string,
+  clientId: string,
+  clientSecret: string,
+  scopes: string,
+): Promise<string> {
   if (cachedToken !== undefined && Date.now() < cachedToken.expiresAt) {
     return cachedToken.token;
   }
@@ -129,16 +352,13 @@ async function getToken(identityUrl: string, clientId: string, clientSecret: str
   }
 
   const data = (await response.json()) as { access_token: string; expires_in: number };
-  // Refresh at 80% of lifetime to avoid edge-of-expiry failures
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + data.expires_in * 800,
-  };
+  // Refresh at 80% of lifetime to avoid edge-of-expiry failures.
+  cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 800 };
   return cachedToken.token;
 }
 
 // ============================================================================
-// REST Client
+// REST client
 // ============================================================================
 
 interface ApiContext {
@@ -167,9 +387,7 @@ async function apiRequest(
   const base = ctx.baseUrl.replace(/\/+$/u, "");
   const url = new URL(`${base}${urlPath.startsWith("/") ? urlPath : `/${urlPath}`}`);
   if (query !== undefined) {
-    for (const [k, v] of Object.entries(query)) {
-      url.searchParams.set(k, v);
-    }
+    for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
   }
 
   const headers: Record<string, string> = {
@@ -210,7 +428,12 @@ async function apiDelete(ctx: ApiContext, urlPath: string): Promise<void> {
   await apiRequest(ctx, "DELETE", urlPath);
 }
 
-async function apiPostBinary(ctx: ApiContext, urlPath: string, data: Uint8Array, contentType: string): Promise<void> {
+async function apiPostBinary(
+  ctx: ApiContext,
+  urlPath: string,
+  data: Uint8Array,
+  contentType: string,
+): Promise<void> {
   const token = await getToken(ctx.identityUrl, ctx.clientId, ctx.clientSecret, ctx.scopes);
   const base = ctx.baseUrl.replace(/\/+$/u, "");
   const url = `${base}${urlPath.startsWith("/") ? urlPath : `/${urlPath}`}`;
@@ -231,63 +454,47 @@ async function apiPostBinary(ctx: ApiContext, urlPath: string, data: Uint8Array,
   }
 }
 
-// OData $filter helper
 function eqFilter(field: string, value: string): string {
   return `${field} eq '${value.replace(/'/gu, "''")}'`;
 }
 
-// OData list helper — extract .value array from response
 async function odataList<T>(ctx: ApiContext, urlPath: string, query?: Record<string, string>): Promise<T[]> {
   const result = await apiGet<{ value: T[] }>(ctx, urlPath, query);
   return result.value;
 }
 
 // ============================================================================
-// CICD Version Manager
+// CICD version manager
 // ============================================================================
 
-interface CicdVersionResult {
-  version: string;
-  wasBumped: boolean;
-}
-
-function computeCicdVersion(devVersion: string, existingVersions: readonly string[]): CicdVersionResult {
-  const existingSet = new Set(existingVersions);
-  if (!existingSet.has(devVersion)) {
+function computeCicdVersion(
+  devVersion: string,
+  existingVersions: readonly string[],
+): { version: string; wasBumped: boolean } {
+  if (!new Set(existingVersions).has(devVersion)) {
     return { version: devVersion, wasBumped: false };
   }
-
   const baseVersion = devVersion.replace(/-cicd\.\d+$/u, "");
-  let maxCicdNumber = 0;
-
+  let maxCicd = 0;
   for (const v of existingVersions) {
     const match = v.match(/^(.+)-cicd\.(\d+)$/u);
-    if (match !== null) {
-      const base = match[1];
-      const num = match[2];
-      if (base === baseVersion && num !== undefined) {
-        maxCicdNumber = Math.max(maxCicdNumber, parseInt(num, 10));
-      }
+    if (match !== null && match[1] === baseVersion && match[2] !== undefined) {
+      maxCicd = Math.max(maxCicd, parseInt(match[2], 10));
     }
   }
-
-  const version = `${baseVersion}-cicd.${maxCicdNumber + 1}`;
-  return { version, wasBumped: true };
+  return { version: `${baseVersion}-cicd.${maxCicd + 1}`, wasBumped: true };
 }
 
 // ============================================================================
-// Simple Glob (no external dependency)
+// Simple glob (no external dependency)
 // ============================================================================
 
 function simpleGlob(pattern: string, cwd: string): string[] {
-  // Handle patterns like "output/*.nupkg", "*.nupkg", "dist/**/*.nupkg"
   const parts = pattern.split("/");
   const filePattern = parts.pop() ?? "";
   const dirPath = parts.length > 0 ? path.resolve(cwd, parts.join("/")) : cwd;
-
   if (!fs.existsSync(dirPath)) return [];
 
-  // Convert glob pattern to regex (handles * and **)
   const regex = new RegExp(
     "^" + filePattern.replace(/\./gu, "\\.").replace(/\*\*/gu, ".*").replace(/\*/gu, "[^/]*") + "$",
     "u",
@@ -296,8 +503,8 @@ function simpleGlob(pattern: string, cwd: string): string[] {
   if (parts.includes("**")) {
     return walkDir(dirPath).filter((f) => regex.test(path.basename(f)));
   }
-
-  return fs.readdirSync(dirPath)
+  return fs
+    .readdirSync(dirPath)
     .filter((f) => regex.test(f))
     .map((f) => path.join(parts.join("/"), f));
 }
@@ -306,18 +513,11 @@ function walkDir(dir: string): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkDir(full));
-    } else {
-      results.push(full);
-    }
+    if (entry.isDirectory()) results.push(...walkDir(full));
+    else results.push(full);
   }
   return results;
 }
-
-// ============================================================================
-// NuGet Helpers
-// ============================================================================
 
 function extractNupkgMetadata(filePath: string): { id: string; version: string } | undefined {
   const basename = path.basename(filePath, ".nupkg");
@@ -330,7 +530,7 @@ function extractNupkgMetadata(filePath: string): { id: string; version: string }
 }
 
 function buildMultipartBody(nupkgBytes: Uint8Array, filename: string): { body: Uint8Array; boundary: string } {
-  const boundary = `----FormBoundary${Date.now()}`;
+  const boundary = `----FormBoundary${randomUUID().replace(/-/gu, "")}`;
   const header = [
     `--${boundary}`,
     `Content-Disposition: form-data; name="file"; filename="${filename}"`,
@@ -341,12 +541,10 @@ function buildMultipartBody(nupkgBytes: Uint8Array, filename: string): { body: U
 
   const headerBytes = new TextEncoder().encode(header + "\r\n");
   const footerBytes = new TextEncoder().encode(footer);
-
   const body = new Uint8Array(headerBytes.length + nupkgBytes.length + footerBytes.length);
   body.set(headerBytes, 0);
   body.set(nupkgBytes, headerBytes.length);
   body.set(footerBytes, headerBytes.length + nupkgBytes.length);
-
   return { body, boundary };
 }
 
@@ -356,21 +554,21 @@ function buildMultipartBody(nupkgBytes: Uint8Array, filename: string): { body: U
 
 function requiredEnv(name: string): string {
   const val = process.env[name];
-  if (val === undefined || val === "") {
-    throw new Error(`Required environment variable ${name} is not set.`);
-  }
+  if (val === undefined || val === "") throw new Error(`Required environment variable ${name} is not set.`);
   return val;
 }
 
+function credEnvKey(assetName: string): string {
+  return assetName.toUpperCase().replace(/[^A-Z0-9]+/gu, "_").replace(/^_+|_+$/gu, "");
+}
+
 // ============================================================================
-// Folder Operations
+// Folder operations (tenant-scoped — no folder header)
 // ============================================================================
 
 async function ensureFolderPath(ctx: ApiContext, folderPath: string): Promise<FolderEntity> {
   const segments = folderPath.split("/").filter(Boolean);
-  if (segments.length === 0) {
-    throw new Error("Folder path must have at least one segment.");
-  }
+  if (segments.length === 0) throw new Error("Folder path must have at least one segment.");
 
   let parentId: number | undefined;
   let lastFolder: FolderEntity | undefined;
@@ -400,9 +598,7 @@ async function ensureFolderPath(ctx: ApiContext, folderPath: string): Promise<Fo
     lastFolder = created;
   }
 
-  if (lastFolder === undefined) {
-    throw new Error(`Could not ensure folder path: ${folderPath}`);
-  }
+  if (lastFolder === undefined) throw new Error(`Could not ensure folder path: ${folderPath}`);
   return lastFolder;
 }
 
@@ -415,62 +611,108 @@ async function folderExists(ctx: ApiContext, folderPath: string): Promise<Folder
 }
 
 // ============================================================================
-// Asset Sync
+// Asset sync (additive by default; credentials from env)
 // ============================================================================
 
-function resolvePerEnvironment(asset: ManifestAsset, tenant: string): string | boolean | number | undefined {
-  if (asset.perEnvironment !== undefined && tenant in asset.perEnvironment) {
-    return asset.perEnvironment[tenant] as string | boolean | number;
-  }
-  return asset.value;
-}
-
-function buildAssetBody(asset: ManifestAsset, value: string | boolean | number | undefined): Record<string, unknown> {
-  const typeMap: Record<string, string> = { text: "Text", bool: "Bool", integer: "Integer", credential: "Credential" };
-  const base: Record<string, unknown> = {
-    Name: asset.name,
-    ValueType: typeMap[asset.type] ?? "Text",
-    ...(asset.description !== undefined && { Description: asset.description }),
-  };
-
+function assetValueFields(asset: DesiredAsset): Record<string, unknown> {
   switch (asset.type) {
-    case "text": return { ...base, StringValue: String(value ?? "") };
-    case "bool": return { ...base, BoolValue: Boolean(value) };
-    case "integer": return { ...base, IntValue: Number(value ?? 0) };
-    default: return base;
+    case "text":
+      return { StringValue: asset.value === null ? "" : String(asset.value) };
+    case "integer":
+      return { IntValue: toInt(asset.value, 0) };
+    case "bool":
+      return { BoolValue: toBool(asset.value) };
+    case "credential":
+      return {}; // handled separately
   }
 }
 
-function assetNeedsUpdate(
-  asset: ManifestAsset,
-  value: string | boolean | number | undefined,
-  existing: Record<string, unknown>,
-): boolean {
+function valueTypeFor(type: AssetType): string {
+  return { text: "Text", integer: "Integer", bool: "Bool", credential: "Credential" }[type];
+}
+
+function credentialEnv(asset: DesiredAsset): { username: string; password: string } | undefined {
+  const key = credEnvKey(asset.name);
+  const password = process.env[`CRED_${key}_PASSWORD`];
+  if (password === undefined || password === "") return undefined;
+  const username =
+    process.env[`CRED_${key}_USERNAME`] ?? (asset.value === null ? "" : String(asset.value));
+  return { username, password };
+}
+
+function assetNeedsUpdate(asset: DesiredAsset, existing: Record<string, unknown>): boolean {
   if (asset.description !== undefined && asset.description !== (existing["Description"] ?? "")) return true;
   switch (asset.type) {
-    case "text": return existing["StringValue"] !== String(value ?? "");
-    case "bool": return existing["BoolValue"] !== Boolean(value);
-    case "integer": return existing["IntValue"] !== Number(value ?? 0);
-    default: return false;
+    case "text":
+      return existing["StringValue"] !== (asset.value === null ? "" : String(asset.value));
+    case "integer":
+      return existing["IntValue"] !== toInt(asset.value, 0);
+    case "bool":
+      return existing["BoolValue"] !== toBool(asset.value);
+    case "credential":
+      return false; // never auto-diff secrets
   }
 }
 
 async function syncAssets(
   ctx: ApiContext,
-  desired: ManifestAsset[],
-  tenant: string,
+  desired: DesiredAsset[],
   mode: string,
-): Promise<DeploySummary["assets"]> {
+  prune: boolean,
+): Promise<NonNullable<DeploySummary["assets"]>> {
   const current = await odataList<ODataEntity>(ctx, "/odata/Assets");
   const currentByName = new Map(current.map((a) => [a.Name, a]));
   const desiredNames = new Set(desired.map((a) => a.name));
 
-  let creates = 0, updates = 0, deletes = 0, unchanged = 0;
+  let creates = 0;
+  let updates = 0;
+  let skipped = 0;
+  let unchanged = 0;
+  let pruned = 0;
 
   for (const asset of desired) {
-    const value = resolvePerEnvironment(asset, tenant);
     const existing = currentByName.get(asset.name);
-    const body = buildAssetBody(asset, value);
+
+    // Credential assets: secret must come from the environment, never the sheet.
+    if (asset.type === "credential") {
+      const cred = credentialEnv(asset);
+      if (cred === undefined) {
+        console.warn(
+          `  [asset] SKIP credential ${asset.name}: set CRED_${credEnvKey(asset.name)}_PASSWORD ` +
+            `(and optionally _USERNAME) in GitHub Secrets. Never put the secret in Config.xlsx.`,
+        );
+        skipped++;
+        continue;
+      }
+      if (existing !== undefined) {
+        // Do not overwrite an existing credential automatically.
+        skipped++;
+        continue;
+      }
+      if (mode === "apply") {
+        console.log(`  [asset] CREATE credential: ${asset.name}`);
+        await apiPost(ctx, "/odata/Assets", {
+          Name: asset.name,
+          ValueScope: "Global",
+          ValueType: "Credential",
+          CredentialUsername: cred.username,
+          CredentialPassword: cred.password,
+          ...(asset.description !== undefined && { Description: asset.description }),
+        });
+      } else {
+        console.log(`  [asset] WOULD CREATE credential: ${asset.name}`);
+      }
+      creates++;
+      continue;
+    }
+
+    const body = {
+      Name: asset.name,
+      ValueScope: "Global",
+      ValueType: valueTypeFor(asset.type),
+      ...(asset.description !== undefined && { Description: asset.description }),
+      ...assetValueFields(asset),
+    };
 
     if (existing === undefined) {
       if (mode === "apply") {
@@ -480,10 +722,10 @@ async function syncAssets(
         console.log(`  [asset] WOULD CREATE: ${asset.name}`);
       }
       creates++;
-    } else if (assetNeedsUpdate(asset, value, existing as Record<string, unknown>)) {
+    } else if (assetNeedsUpdate(asset, existing as Record<string, unknown>)) {
       if (mode === "apply") {
         console.log(`  [asset] UPDATE: ${asset.name}`);
-        const { Name: _, ValueType: _2, ...rest } = body;
+        const { Name: _n, ValueType: _vt, ...rest } = body;
         await apiPatch(ctx, `/odata/Assets(${existing.Id})`, rest);
       } else {
         console.log(`  [asset] WOULD UPDATE: ${asset.name}`);
@@ -494,31 +736,39 @@ async function syncAssets(
     }
   }
 
-  for (const existing of current) {
-    if ((existing as Record<string, unknown>)["ValueType"] === "Credential") continue;
-    if (!desiredNames.has(existing.Name)) {
-      if (mode === "apply") {
-        console.log(`  [asset] DELETE: ${existing.Name}`);
-        await apiDelete(ctx, `/odata/Assets(${existing.Id})`);
-      } else {
-        console.log(`  [asset] WOULD DELETE: ${existing.Name}`);
+  // Pruning is OFF by default — shared folders make blind deletes dangerous.
+  if (prune) {
+    for (const existing of current) {
+      if ((existing as Record<string, unknown>)["ValueType"] === "Credential") continue;
+      if (!desiredNames.has(existing.Name)) {
+        if (mode === "apply") {
+          console.log(`  [asset] PRUNE: ${existing.Name}`);
+          await apiDelete(ctx, `/odata/Assets(${existing.Id})`);
+        } else {
+          console.log(`  [asset] WOULD PRUNE: ${existing.Name}`);
+        }
+        pruned++;
       }
-      deletes++;
     }
   }
 
-  return { creates, updates, deletes, unchanged };
+  return { creates, updates, skipped, unchanged, pruned };
 }
 
 // ============================================================================
-// Queue Sync
+// Queue sync (create-only)
 // ============================================================================
 
-async function syncQueues(ctx: ApiContext, desired: ManifestQueue[], mode: string): Promise<DeploySummary["queues"]> {
+async function syncQueues(
+  ctx: ApiContext,
+  desired: DesiredQueue[],
+  mode: string,
+): Promise<NonNullable<DeploySummary["queues"]>> {
   const current = await odataList<ODataEntity>(ctx, "/odata/QueueDefinitions");
   const currentByName = new Map(current.map((q) => [q.Name, q]));
 
-  let creates = 0, unchanged = 0;
+  let creates = 0;
+  let unchanged = 0;
 
   for (const queue of desired) {
     if (currentByName.has(queue.name)) {
@@ -530,29 +780,33 @@ async function syncQueues(ctx: ApiContext, desired: ManifestQueue[], mode: strin
       await apiPost(ctx, "/odata/QueueDefinitions", {
         Name: queue.name,
         ...(queue.description !== undefined && { Description: queue.description }),
-        MaxNumberOfRetries: queue.maxRetries ?? 0,
-        AcceptAutomaticallyRetry: queue.autoRetry ?? false,
-        EnforceUniqueReference: queue.uniqueReference ?? false,
-        Encrypted: queue.encrypted ?? false,
+        MaxNumberOfRetries: queue.maxRetries,
+        AcceptAutomaticallyRetry: queue.autoRetry,
+        EnforceUniqueReference: queue.uniqueReference,
+        Encrypted: queue.encrypted,
       });
     } else {
       console.log(`  [queue] WOULD CREATE: ${queue.name}`);
     }
     creates++;
   }
-
   return { creates, unchanged };
 }
 
 // ============================================================================
-// Bucket Sync
+// Bucket sync (create-only; Identifier is a client-generated GUID)
 // ============================================================================
 
-async function syncBuckets(ctx: ApiContext, desired: ManifestBucket[], mode: string): Promise<DeploySummary["buckets"]> {
+async function syncBuckets(
+  ctx: ApiContext,
+  desired: DesiredBucket[],
+  mode: string,
+): Promise<NonNullable<DeploySummary["buckets"]>> {
   const current = await odataList<ODataEntity>(ctx, "/odata/Buckets");
   const currentByName = new Map(current.map((b) => [b.Name, b]));
 
-  let creates = 0, unchanged = 0;
+  let creates = 0;
+  let unchanged = 0;
 
   for (const bucket of desired) {
     if (currentByName.has(bucket.name)) {
@@ -563,6 +817,7 @@ async function syncBuckets(ctx: ApiContext, desired: ManifestBucket[], mode: str
       console.log(`  [bucket] CREATE: ${bucket.name}`);
       await apiPost(ctx, "/odata/Buckets", {
         Name: bucket.name,
+        Identifier: randomUUID(),
         ...(bucket.description !== undefined && { Description: bucket.description }),
       });
     } else {
@@ -570,104 +825,46 @@ async function syncBuckets(ctx: ApiContext, desired: ManifestBucket[], mode: str
     }
     creates++;
   }
-
   return { creates, unchanged };
 }
 
 // ============================================================================
-// Package Upload
+// Package / library upload
 // ============================================================================
 
 async function uploadPackages(
   ctx: ApiContext,
-  entries: ManifestPackage[],
+  entries: PackageEntry[],
   mode: string,
-): Promise<NonNullable<DeploySummary["packages"]>> {
-  const results: NonNullable<DeploySummary["packages"]> = [];
+  kind: "package" | "library",
+): Promise<Array<{ name: string; version: string; action: string }>> {
+  const results: Array<{ name: string; version: string; action: string }> = [];
+  // Libraries are tenant-scoped (no folder header).
+  const uploadCtx = kind === "library" ? { ...ctx, folderId: undefined } : ctx;
+  const listPath =
+    kind === "library"
+      ? "/odata/Libraries"
+      : "/odata/Processes/UiPath.Server.Configuration.OData.GetPackageVersions";
+  const uploadPath =
+    kind === "library"
+      ? "/odata/Libraries/UiPath.Server.Configuration.OData.UploadPackage"
+      : "/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage";
 
   for (const entry of entries) {
-    const files = simpleGlob(entry.path, process.cwd());
-    if (files.length === 0) {
-      console.warn(`  [package] No files matched pattern: ${entry.path}`);
+    const files = entry.path !== undefined ? simpleGlob(entry.path, process.cwd()) : [];
+    if (entry.path !== undefined && files.length === 0) {
+      console.warn(`  [${kind}] No files matched pattern: ${entry.path}`);
       continue;
     }
 
     for (const file of files) {
       const meta = extractNupkgMetadata(file);
       if (meta === undefined) {
-        console.warn(`  [package] Could not parse metadata from filename: ${file}`);
+        console.warn(`  [${kind}] Could not parse metadata from filename: ${file}`);
         continue;
       }
 
-      const existingVersions = await odataList<PackageVersionEntity>(
-        ctx,
-        "/odata/Processes/UiPath.Server.Configuration.OData.GetPackageVersions",
-        { $filter: eqFilter("Id", meta.id) },
-      );
-      const versionList = existingVersions.map((v) => v.Version);
-
-      let targetVersion = meta.version;
-      let action = "upload";
-
-      if (versionList.includes(meta.version)) {
-        if (entry.autoVersion !== false) {
-          const computed = computeCicdVersion(meta.version, versionList);
-          if (computed.wasBumped) {
-            targetVersion = computed.version;
-            action = "upload_bumped";
-            console.log(`  [package] ${meta.id}: version ${meta.version} exists, bumped to ${targetVersion}`);
-          }
-        } else {
-          console.log(`  [package] ${meta.id}@${meta.version}: already exists, skipping`);
-          results.push({ name: meta.id, version: meta.version, action: "skipped" });
-          continue;
-        }
-      }
-
-      if (mode === "apply") {
-        console.log(`  [package] UPLOAD: ${meta.id}@${targetVersion}`);
-        const bytes = new Uint8Array(fs.readFileSync(path.resolve(file)));
-        const { body, boundary } = buildMultipartBody(bytes, "package.nupkg");
-        await apiPostBinary(ctx, "/odata/Processes/UiPath.Server.Configuration.OData.UploadPackage", body, `multipart/form-data; boundary=${boundary}`);
-        results.push({ name: meta.id, version: targetVersion, action });
-      } else {
-        console.log(`  [package] WOULD UPLOAD: ${meta.id}@${targetVersion}`);
-        results.push({ name: meta.id, version: targetVersion, action: `would_${action}` });
-      }
-    }
-  }
-
-  return results;
-}
-
-// ============================================================================
-// Library Upload
-// ============================================================================
-
-async function uploadLibraries(
-  ctx: ApiContext,
-  entries: ManifestPackage[],
-  mode: string,
-): Promise<NonNullable<DeploySummary["libraries"]>> {
-  const results: NonNullable<DeploySummary["libraries"]> = [];
-  // Libraries are tenant-scoped, not folder-scoped
-  const libCtx = { ...ctx, folderId: undefined };
-
-  for (const entry of entries) {
-    const files = simpleGlob(entry.path, process.cwd());
-    if (files.length === 0) {
-      console.warn(`  [library] No files matched pattern: ${entry.path}`);
-      continue;
-    }
-
-    for (const file of files) {
-      const meta = extractNupkgMetadata(file);
-      if (meta === undefined) {
-        console.warn(`  [library] Could not parse metadata from filename: ${file}`);
-        continue;
-      }
-
-      const existing = await odataList<PackageVersionEntity>(libCtx, "/odata/Libraries", {
+      const existing = await odataList<PackageVersionEntity>(uploadCtx, listPath, {
         $filter: eqFilter("Id", meta.id),
       });
       const versionList = existing.map((v) => v.Version);
@@ -681,59 +878,55 @@ async function uploadLibraries(
           if (computed.wasBumped) {
             targetVersion = computed.version;
             action = "upload_bumped";
-            console.log(`  [library] ${meta.id}: version ${meta.version} exists, bumped to ${targetVersion}`);
+            console.log(`  [${kind}] ${meta.id}: ${meta.version} exists, bumped to ${targetVersion}`);
           }
         } else {
-          console.log(`  [library] ${meta.id}@${meta.version}: already exists, skipping`);
+          console.log(`  [${kind}] ${meta.id}@${meta.version}: already exists, skipping`);
           results.push({ name: meta.id, version: meta.version, action: "skipped" });
           continue;
         }
       }
 
       if (mode === "apply") {
-        console.log(`  [library] UPLOAD: ${meta.id}@${targetVersion}`);
+        console.log(`  [${kind}] UPLOAD: ${meta.id}@${targetVersion}`);
         const bytes = new Uint8Array(fs.readFileSync(path.resolve(file)));
-        const { body, boundary } = buildMultipartBody(bytes, "library.nupkg");
-        await apiPostBinary(libCtx, "/odata/Libraries/UiPath.Server.Configuration.OData.UploadPackage", body, `multipart/form-data; boundary=${boundary}`);
+        const { body, boundary } = buildMultipartBody(bytes, `${kind}.nupkg`);
+        await apiPostBinary(uploadCtx, uploadPath, body, `multipart/form-data; boundary=${boundary}`);
         results.push({ name: meta.id, version: targetVersion, action });
       } else {
-        console.log(`  [library] WOULD UPLOAD: ${meta.id}@${targetVersion}`);
+        console.log(`  [${kind}] WOULD UPLOAD: ${meta.id}@${targetVersion}`);
         results.push({ name: meta.id, version: targetVersion, action: `would_${action}` });
       }
     }
   }
-
   return results;
 }
 
 // ============================================================================
-// Process Sync
+// Process sync
 // ============================================================================
 
 async function syncProcesses(
   ctx: ApiContext,
-  desired: ManifestProcess[],
+  desired: ProcessEntry[],
   mode: string,
 ): Promise<NonNullable<DeploySummary["processes"]>> {
   const results: NonNullable<DeploySummary["processes"]> = [];
-
   for (const proc of desired) {
-    const existing = await odataList<ProcessEntity>(ctx, "/odata/Releases", {
+    const existing = await odataList<ProcessReleaseEntity>(ctx, "/odata/Releases", {
       $filter: eqFilter("ProcessKey", proc.packageId),
       $top: "1",
     });
-
     if (existing.length > 0) {
       results.push({ name: proc.name, action: "exists" });
       continue;
     }
-
     if (mode === "apply") {
       console.log(`  [process] CREATE: ${proc.name}`);
       await apiPost(ctx, "/odata/Releases", {
         Name: proc.name,
         ProcessKey: proc.packageId,
-        ProcessVersion: "",
+        ProcessVersion: proc.version ?? "",
         ...(proc.description !== undefined && { Description: proc.description }),
       });
       results.push({ name: proc.name, action: "create" });
@@ -742,8 +935,42 @@ async function syncProcesses(
       results.push({ name: proc.name, action: "would_create" });
     }
   }
-
   return results;
+}
+
+// ============================================================================
+// Reporting
+// ============================================================================
+
+function printParsed(config: ParsedConfig, tenant: string): void {
+  console.log("");
+  console.log(`[parsed] Project:   ${config.meta.projectName ?? "(unset)"}`);
+  console.log(`[parsed] Repo:      ${config.meta.repoName ?? "(unset)"}`);
+  console.log(`[parsed] Folder:    ${config.meta.folderPath ?? "(tenant root)"}`);
+  console.log(`[parsed] Tenant:    ${tenant}`);
+  console.log(`[parsed] Assets (${config.assets.length}):`);
+  for (const a of config.assets) {
+    const shown = a.type === "credential" ? "<from GitHub Secrets>" : JSON.stringify(a.value);
+    console.log(`           - ${a.name} (${a.type}) = ${shown}`);
+  }
+  console.log(`[parsed] Queues (${config.queues.length}):`);
+  for (const q of config.queues) {
+    console.log(
+      `           - ${q.name} [retries=${q.maxRetries} auto=${q.autoRetry} unique=${q.uniqueReference} enc=${q.encrypted}]`,
+    );
+  }
+  console.log(`[parsed] Buckets (${config.buckets.length}):`);
+  for (const b of config.buckets) console.log(`           - ${b.name}`);
+  console.log(
+    `[parsed] Packages (${config.packages.length}), Libraries (${config.libraries.length}), Processes (${config.processes.length})`,
+  );
+  if (config.assets.length === 0) {
+    console.warn(
+      `[parsed] NOTE: no assets parsed for tenant "${tenant}". ` +
+        `Check that a "${tenant} Assets" tab exists in Config.xlsx (spacing/hyphens are tolerated, but the tenant word must match).`,
+    );
+  }
+  console.log("");
 }
 
 // ============================================================================
@@ -751,66 +978,75 @@ async function syncProcesses(
 // ============================================================================
 
 async function main(): Promise<void> {
-  const manifestPath = path.resolve("orchestrator-manifest.json");
-  if (!fs.existsSync(manifestPath)) {
-    console.error("No orchestrator-manifest.json found in project root.");
-    process.exit(1);
-  }
-
-  const manifest: Manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  const validateOnly = process.argv.includes("--validate");
 
   const tenant = requiredEnv("TENANT");
+  const configPath = process.env["CONFIG_XLSX_PATH"] ?? path.join("Data", "Config.xlsx");
+
+  console.log(`[deploy] Reading config: ${configPath}`);
+  const config = await parseConfig(configPath, tenant);
+  printParsed(config, tenant);
+
+  if (validateOnly) {
+    console.log("[deploy] --validate: parsed config only, no network calls made.");
+    return;
+  }
+
   const mode = process.env["DEPLOY_MODE"] ?? "apply";
+  const prune = (process.env["PRUNE_ASSETS"] ?? "false").toLowerCase() === "true";
   const baseUrl = requiredEnv("ORCHESTRATOR_BASE_URL");
   const identityUrl =
     process.env["ORCHESTRATOR_IDENTITY_URL"] ??
     baseUrl.replace(/\/orchestrator_?\/?$/u, "/identity_/connect/token");
   const scopes =
-    process.env["ORCHESTRATOR_SCOPES"] ?? "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration";
+    process.env["ORCHESTRATOR_SCOPES"] ??
+    "OR.Assets OR.Folders OR.Queues OR.Buckets OR.Execution OR.Administration";
 
   const prefix = `ORCHESTRATOR_${tenant.toUpperCase()}`;
   const clientId = requiredEnv(`${prefix}_CLIENT_ID`);
   const clientSecret = requiredEnv(`${prefix}_CLIENT_SECRET`);
 
-  console.log(`[deploy] Project: ${manifest.project}`);
-  console.log(`[deploy] Tenant: ${tenant}`);
-  console.log(`[deploy] Mode: ${mode}`);
+  console.log(`[deploy] Tenant: ${tenant}  Mode: ${mode}  PruneAssets: ${prune}`);
 
   const ctx: ApiContext = { baseUrl, identityUrl, clientId, clientSecret, scopes };
-
   const summary: DeploySummary = {
     tenant,
     mode,
-    project: manifest.project,
+    project: config.meta.projectName,
+    repo: config.meta.repoName,
+    folderPath: config.meta.folderPath,
     errors: [],
   };
 
-  // Step 1: Ensure folder structure
-  if (manifest.folderPath !== undefined) {
-    console.log(`[deploy] Ensuring folder path: ${manifest.folderPath}`);
-    if (mode === "apply") {
-      try {
-        const folder = await ensureFolderPath(ctx, manifest.folderPath);
+  // Step 1: ensure folder
+  if (config.meta.folderPath !== undefined) {
+    console.log(`[deploy] Ensuring folder: ${config.meta.folderPath}`);
+    try {
+      if (mode === "apply") {
+        const folder = await ensureFolderPath(ctx, config.meta.folderPath);
         ctx.folderId = folder.Id;
-        summary.folders = [{ path: manifest.folderPath, action: "ensured" }];
+        summary.folder = { path: config.meta.folderPath, action: "ensured" };
         console.log(`[deploy] Folder ready: ID=${folder.Id}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[deploy] Failed to ensure folder: ${msg}`);
-        summary.errors.push({ step: "folders", message: msg });
+      } else {
+        const existing = await folderExists(ctx, config.meta.folderPath);
+        summary.folder = {
+          path: config.meta.folderPath,
+          action: existing !== undefined ? "exists" : "would_create",
+        };
+        if (existing !== undefined) ctx.folderId = existing.Id;
       }
-    } else {
-      const existing = await folderExists(ctx, manifest.folderPath);
-      summary.folders = [{ path: manifest.folderPath, action: existing !== undefined ? "exists" : "would_create" }];
-      if (existing !== undefined) ctx.folderId = existing.Id;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[deploy] Folder step failed: ${msg}`);
+      summary.errors.push({ step: "folders", message: msg });
     }
   }
 
-  // Step 2: Sync assets
-  if (manifest.assets !== undefined && manifest.assets.length > 0) {
-    console.log(`[deploy] Syncing ${manifest.assets.length} assets...`);
+  // Step 2: assets
+  if (config.assets.length > 0) {
+    console.log(`[deploy] Syncing ${config.assets.length} assets...`);
     try {
-      summary.assets = await syncAssets(ctx, manifest.assets, tenant, mode);
+      summary.assets = await syncAssets(ctx, config.assets, mode, prune);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Asset sync failed: ${msg}`);
@@ -818,11 +1054,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 3: Sync queues
-  if (manifest.queues !== undefined && manifest.queues.length > 0) {
-    console.log(`[deploy] Syncing ${manifest.queues.length} queues...`);
+  // Step 3: queues
+  if (config.queues.length > 0) {
+    console.log(`[deploy] Syncing ${config.queues.length} queues...`);
     try {
-      summary.queues = await syncQueues(ctx, manifest.queues, mode);
+      summary.queues = await syncQueues(ctx, config.queues, mode);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Queue sync failed: ${msg}`);
@@ -830,11 +1066,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 4: Sync buckets
-  if (manifest.buckets !== undefined && manifest.buckets.length > 0) {
-    console.log(`[deploy] Syncing ${manifest.buckets.length} buckets...`);
+  // Step 4: buckets
+  if (config.buckets.length > 0) {
+    console.log(`[deploy] Syncing ${config.buckets.length} buckets...`);
     try {
-      summary.buckets = await syncBuckets(ctx, manifest.buckets, mode);
+      summary.buckets = await syncBuckets(ctx, config.buckets, mode);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Bucket sync failed: ${msg}`);
@@ -842,11 +1078,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 5: Upload packages
-  if (manifest.packages !== undefined && manifest.packages.length > 0) {
-    console.log(`[deploy] Processing ${manifest.packages.length} package entries...`);
+  // Step 5: packages
+  if (config.packages.length > 0) {
+    console.log(`[deploy] Processing ${config.packages.length} package entries...`);
     try {
-      summary.packages = await uploadPackages(ctx, manifest.packages, mode);
+      summary.packages = await uploadPackages(ctx, config.packages, mode, "package");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Package upload failed: ${msg}`);
@@ -854,11 +1090,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 6: Upload libraries
-  if (manifest.libraries !== undefined && manifest.libraries.length > 0) {
-    console.log(`[deploy] Processing ${manifest.libraries.length} library entries...`);
+  // Step 6: libraries
+  if (config.libraries.length > 0) {
+    console.log(`[deploy] Processing ${config.libraries.length} library entries...`);
     try {
-      summary.libraries = await uploadLibraries(ctx, manifest.libraries, mode);
+      summary.libraries = await uploadPackages(ctx, config.libraries, mode, "library");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Library upload failed: ${msg}`);
@@ -866,11 +1102,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Step 7: Sync processes
-  if (manifest.processes !== undefined && manifest.processes.length > 0) {
-    console.log(`[deploy] Syncing ${manifest.processes.length} processes...`);
+  // Step 7: processes
+  if (config.processes.length > 0) {
+    console.log(`[deploy] Syncing ${config.processes.length} processes...`);
     try {
-      summary.processes = await syncProcesses(ctx, manifest.processes, mode);
+      summary.processes = await syncProcesses(ctx, config.processes, mode);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[deploy] Process sync failed: ${msg}`);
@@ -878,14 +1114,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // Write summary
   fs.writeFileSync("deployment-summary.json", JSON.stringify(summary, null, 2));
 
   if (summary.errors.length > 0) {
     console.error(`[deploy] Completed with ${summary.errors.length} error(s).`);
     process.exit(1);
   }
-
   console.log("[deploy] Deployment completed successfully.");
 }
 

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+          xmlns:ui="http://schemas.uipath.com/workflow/activities"
+          xmlns:uix="http://schemas.uipath.com/workflow/activities/uix"
+          xmlns:s="clr-namespace:System;assembly=mscorlib"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          DisplayName="Process"
+          sap2010:Annotation.AnnotationText="Keys one invoice into the finance portal and reconciles it against the ledger.">
+  <x:Members>
+    <x:Property Name="in_InvoiceId" Type="InArgument(x:String)" sap2010:Annotation.AnnotationText="Invoice identifier from the queue item." />
+    <x:Property Name="in_Amount" Type="InArgument(x:Double)" />
+    <x:Property Name="out_PostedRef" Type="OutArgument(x:String)" />
+  </x:Members>
+  <Sequence DisplayName="Process Sequence">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="LedgerBalance" />
+      <Variable x:TypeArguments="x:Boolean" Name="IsWithinTolerance" Default="True" />
+    </Sequence.Variables>
+    <ui:OpenBrowser DisplayName="Open finance portal login" Url="https://finance.contoso.com/login" BrowserType="Chrome">
+      <ui:OpenBrowser.Body>
+        <ActivityAction>
+          <Sequence DisplayName="Portal steps">
+            <ui:TypeInto DisplayName="Type username" Selector="&lt;webctrl id='user' title='Contoso Finance' /&gt;" Text="botuser" />
+            <ui:TypeInto DisplayName="Type password" Selector="&lt;webctrl id='pass' /&gt;" Text="secret" />
+            <ui:NClick DisplayName="Click sign in" Selector="&lt;webctrl id='signin' /&gt;" />
+            <ui:NavigateBrowser DisplayName="Go to invoices page" Url="https://finance.contoso.com/invoices/new" />
+            <ui:TypeInto DisplayName="Enter invoice id" Selector="&lt;webctrl id='invId' /&gt;" Text="[in_InvoiceId]" />
+          </Sequence>
+        </ActivityAction>
+      </ui:OpenBrowser.Body>
+    </ui:OpenBrowser>
+    <ui:DatabaseConnect DisplayName="Connect to ledger DB" ConnectionString="Server=ledger;Database=Finance">
+      <ui:DatabaseConnect.Body>
+        <ActivityAction>
+          <Sequence DisplayName="Reconcile">
+            <ui:ExecuteQuery DisplayName="Read ledger balance" Sql="SELECT Balance FROM Ledger WHERE InvoiceId = @id" />
+          </Sequence>
+        </ActivityAction>
+      </ui:DatabaseConnect.Body>
+    </ui:DatabaseConnect>
+    <ui:ExcelReadRange DisplayName="Read tolerance table" WorkbookPath="C:\bot\tolerances.xlsx" SheetName="Rules" Range="A1:B50" />
+    <If DisplayName="Amount within tolerance?" Condition="[IsWithinTolerance]">
+      <If.Then>
+        <Sequence DisplayName="Post invoice">
+          <ui:NClick DisplayName="Click post" Selector="&lt;webctrl id='post' /&gt;" />
+          <ui:SendMail DisplayName="Email confirmation" Account="ap@contoso.com" />
+        </Sequence>
+      </If.Then>
+      <If.Else>
+        <Sequence DisplayName="Reject invoice">
+          <Throw DisplayName="Raise business exception"
+                 Exception="[New UiPath.Core.BusinessRuleException(&quot;Amount exceeds tolerance&quot;)]" />
+        </Sequence>
+      </If.Else>
+    </If>
+  </Sequence>
+</Activity>

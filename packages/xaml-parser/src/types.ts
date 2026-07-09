@@ -19,6 +19,13 @@ export interface ActivityInfo {
   readonly type: string;
   readonly displayName: string | undefined;
   readonly annotation: string | undefined;
+  // Scalar XAML attributes on this activity element, keyed by their local name
+  // with the fast-xml-parser `@_` prefix stripped (e.g. `Url`, `Message`,
+  // `Selector`, `TableName`, `WorkflowFileName`). Downstream consumers
+  // (process-graph) mine these to work out which system/surface an activity
+  // touches. Annotation and DisplayName are surfaced separately above and are
+  // omitted here to avoid duplication.
+  readonly attributes: Readonly<Record<string, string>>;
   readonly children: readonly ActivityInfo[];
 }
 

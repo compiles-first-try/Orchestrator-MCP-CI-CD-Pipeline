@@ -1,0 +1,5 @@
+{
+  "name": "Invoice Processing Bot",
+  "main": "Main.xaml",
+  "description": "REFramework demo: reads invoices from a queue, keys them into the finance web app, reconciles against the ledger database, and emails exceptions."
+}

@@ -64,6 +64,18 @@ describe("parseXaml", () => {
     expect((top?.children ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
+  it("captures scalar activity attributes but not DisplayName or annotation", () => {
+    const { activities } = parseXaml(SAMPLE_XAML);
+    const top = activities[0];
+    const logStart = (top?.children ?? []).find((c) => c.displayName === "Log start");
+    expect(logStart?.attributes["Message"]).toBe("Starting");
+    expect(logStart?.attributes).not.toHaveProperty("DisplayName");
+    const annotationKeys = Object.keys(top?.attributes ?? {}).filter((k) =>
+      k.endsWith("Annotation.AnnotationText"),
+    );
+    expect(annotationKeys).toEqual([]);
+  });
+
   it("rejects malformed XML", () => {
     expect(() => parseXaml("<not really xaml")).toThrow(XamlParseError);
   });

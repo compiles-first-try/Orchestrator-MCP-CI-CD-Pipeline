@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+          xmlns:ui="http://schemas.uipath.com/workflow/activities"
+          xmlns:s="clr-namespace:System;assembly=mscorlib"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          DisplayName="Main"
+          sap2010:Annotation.AnnotationText="REFramework dispatcher/performer entry point.">
+  <x:Members>
+    <x:Property Name="in_Config" Type="InArgument(x:String)" sap2010:Annotation.AnnotationText="Path to the config file." />
+    <x:Property Name="out_TransactionsProcessed" Type="OutArgument(x:Int32)" />
+  </x:Members>
+  <Sequence DisplayName="Main Sequence">
+    <Sequence.Variables>
+      <Variable x:TypeArguments="x:String" Name="TransactionItem" />
+      <Variable x:TypeArguments="x:Int32" Name="RetryCounter" Default="0" />
+      <Variable x:TypeArguments="x:Boolean" Name="HasTransaction" Default="False" />
+    </Sequence.Variables>
+    <TryCatch DisplayName="Process with recovery">
+      <TryCatch.Try>
+        <Sequence DisplayName="Dispatcher loop">
+          <ui:InvokeWorkflowFile DisplayName="Get Transaction Data" WorkflowFileName="Framework\GetTransactionData.xaml" />
+          <ui:InvokeWorkflowFile DisplayName="Process Transaction" WorkflowFileName="Process.xaml" />
+          <ui:InvokeWorkflowFile DisplayName="Set Transaction Status" WorkflowFileName="Framework\SetTransactionStatus.xaml" />
+        </Sequence>
+      </TryCatch.Try>
+      <TryCatch.Catches>
+        <Catch x:TypeArguments="s:Exception" DisplayName="System error recovery">
+          <ActivityAction>
+            <Sequence DisplayName="Recover and log">
+              <ui:LogMessage DisplayName="Log system error" Level="Error" Message="Transaction failed, retrying." />
+            </Sequence>
+          </ActivityAction>
+        </Catch>
+      </TryCatch.Catches>
+    </TryCatch>
+  </Sequence>
+</Activity>

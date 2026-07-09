@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+          xmlns:ui="http://schemas.uipath.com/workflow/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          DisplayName="GetTransactionData"
+          sap2010:Annotation.AnnotationText="Pulls the next invoice from the Orchestrator queue.">
+  <x:Members>
+    <x:Property Name="out_TransactionItem" Type="OutArgument(x:String)" />
+  </x:Members>
+  <Sequence DisplayName="Get Transaction Data">
+    <ui:GetTransactionItem DisplayName="Get Transaction Item" QueueName="Invoices" />
+  </Sequence>
+</Activity>

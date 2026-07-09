@@ -1,0 +1,25 @@
+{
+  "name": "@rpa-platform/process-viz",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "process-viz": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "viz": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@rpa-platform/process-graph": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@vitest/coverage-v8": "^2.0.2",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.2"
+  }
+}

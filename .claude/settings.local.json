@@ -21,7 +21,8 @@
       "Bash(pnpm --filter @rpa-platform/reconciler test)",
       "Bash(pnpm --filter @rpa-platform/slack-bot typecheck)",
       "Bash(pnpm --filter @rpa-platform/slack-bot test)",
-      "Bash(pnpm --filter @rpa-platform/init-template-repo typecheck)"
+      "Bash(pnpm --filter @rpa-platform/init-template-repo typecheck)",
+      "mcp__Claude_Code_Remote__send_later"
     ]
   }
 }

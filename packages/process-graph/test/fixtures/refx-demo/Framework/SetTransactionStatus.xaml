@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Activity mc:Ignorable="sap sap2010"
+          xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:sap2010="http://schemas.microsoft.com/netfx/2010/xaml/activities/presentation"
+          xmlns:ui="http://schemas.uipath.com/workflow/activities"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          DisplayName="SetTransactionStatus"
+          sap2010:Annotation.AnnotationText="Marks the queue item Successful / Business / System.">
+  <x:Members>
+    <x:Property Name="in_TransactionItem" Type="InArgument(x:String)" />
+  </x:Members>
+  <Sequence DisplayName="Set Transaction Status">
+    <ui:SetTransactionStatus DisplayName="Set Transaction Status" QueueName="Invoices" Status="Successful" />
+  </Sequence>
+</Activity>

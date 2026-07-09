@@ -121,7 +121,11 @@ function extractActivities(root: Record<string, unknown>): readonly ActivityInfo
 
 function toActivityInfo(type: string, node: Record<string, unknown>): ActivityInfo | undefined {
   // Skip wrapper elements that are containers for Variables/Imports etc.
-  if (type.endsWith(".Variables") || type.endsWith(".Imports") || type === "TextExpression.NamespacesForImplementation") {
+  if (
+    type.endsWith(".Variables") ||
+    type.endsWith(".Imports") ||
+    type === "TextExpression.NamespacesForImplementation"
+  ) {
     return undefined;
   }
   const children: ActivityInfo[] = [];
@@ -146,8 +150,29 @@ function toActivityInfo(type: string, node: Record<string, unknown>): ActivityIn
     type,
     displayName: stringAttr(node, "DisplayName"),
     annotation: extractAnnotation(node),
+    attributes: extractScalarAttributes(node),
     children,
   };
+}
+
+// Collects the scalar (string/number/boolean) attributes of an activity node.
+// Keys keep their local name minus the fast-xml-parser `@_` prefix. DisplayName
+// and the annotation attribute are excluded because they are exposed on their
+// own fields; keeping them here too would just duplicate the data.
+function extractScalarAttributes(node: Record<string, unknown>): Readonly<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (!key.startsWith(ATTR_PREFIX)) continue;
+    const localName = key.slice(ATTR_PREFIX.length);
+    if (localName === "DisplayName") continue;
+    if (localName.endsWith("Annotation.AnnotationText")) continue;
+    if (typeof value === "string") {
+      out[localName] = value;
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      out[localName] = String(value);
+    }
+  }
+  return out;
 }
 
 // Walks through every activity-shaped object in the tree, calling the visitor
@@ -175,7 +200,10 @@ function walk(
   }
 }
 
-function collect(container: Record<string, unknown>, keys: readonly string[]): Record<string, unknown>[] {
+function collect(
+  container: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   for (const key of keys) {
     const value = container[key];
@@ -194,11 +222,7 @@ function collect(container: Record<string, unknown>, keys: readonly string[]): R
 }
 
 function stringAttr(node: Record<string, unknown>, name: string): string | undefined {
-  const candidates = [
-    node[`${ATTR_PREFIX}${name}`],
-    node[`${ATTR_PREFIX}x:${name}`],
-    node[name],
-  ];
+  const candidates = [node[`${ATTR_PREFIX}${name}`], node[`${ATTR_PREFIX}x:${name}`], node[name]];
   for (const candidate of candidates) {
     if (typeof candidate === "string") return candidate;
     if (typeof candidate === "number" || typeof candidate === "boolean") return String(candidate);
